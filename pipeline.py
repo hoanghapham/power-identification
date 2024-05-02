@@ -7,7 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.model_selection import RandomizedSearchCV
 from scipy.stats import uniform, randint
-from data_cv import get_data
+from data_cv import get_data_kfold
 
 class IdeologyPowerDetectionPipeline:
     def __init__(self, data_dir='data', models_dir='models', pred_dir='predictions'):
@@ -16,14 +16,15 @@ class IdeologyPowerDetectionPipeline:
         self.pred_dir = pred_dir
         self.vec = None
         self.model = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def load_data(self, task, pcode, num_splits=None):
         data_files = [os.path.join(self.data_dir, task, f"{task}-{pcode}-train.tsv")]
         if num_splits is None:
-            t_trn, y_trn, t_val, y_val = get_data(data_files[0])
+            t_trn, y_trn, t_val, y_val = get_data_kfold(data_files[0])
             return [(t_trn, y_trn, t_val, y_val)]
         else:
-            data_splits = get_data(data_files[0], num_splits=num_splits)
+            data_splits = get_data_kfold(data_files[0], num_splits=num_splits)
             return data_splits
 
     def preprocess_data(self, texts):
@@ -35,8 +36,11 @@ class IdeologyPowerDetectionPipeline:
         return x_trn
 
     def train_model(self, x_trn, y_trn):
+        x_trn_tensor = torch.tensor(x_trn.toarray(), dtype=torch.float32).to(self.device)
+        y_trn_tensor = torch.tensor(y_trn, dtype=torch.long).to(self.device)
         model = LogisticRegression(max_iter=500)
-        model.fit(x_trn, y_trn)
+        model.to(self.device)
+        model.fit(x_trn_tensor, y_trn_tensor)
         self.model = model
 
     def hyperparameter_tuning(self, x_trn, y_trn):
@@ -47,10 +51,7 @@ class IdeologyPowerDetectionPipeline:
 
         param_distributions = logreg_params
 
-        random_search = RandomizedSearchCV(
-            LogisticRegression(), param_distributions, 
-            n_iter=10, cv=5, scoring='f1_macro', verbose=2, n_jobs=-1
-        )
+        random_search = RandomizedSearchCV(LogisticRegression(), param_distributions, n_iter=10, cv=5, scoring='f1_macro', verbose=2, n_jobs=-1)
         random_search.fit(x_trn, y_trn)
 
         best_params = random_search.best_params_
@@ -62,9 +63,7 @@ class IdeologyPowerDetectionPipeline:
         if self.model is None:
             raise ValueError("Model has not been trained yet.")
         y_pred = self.model.predict(x_val)
-        precision, recall, fscore, _ = precision_recall_fscore_support(
-            y_val, y_pred, average='macro'
-        )
+        precision, recall, fscore, _ = precision_recall_fscore_support(y_val, y_pred, average='macro')
         return precision, recall, fscore
 
     def save_model(self, task, pcode):
@@ -82,7 +81,7 @@ class IdeologyPowerDetectionPipeline:
 pipeline = IdeologyPowerDetectionPipeline()
 
 # Example usage for proof of concept
-task = 'power'
+task = 'orientation'
 pcode = 'at'
 num_splits = 5  # Number of folds for K-fold cross-validation
 
