@@ -1,3 +1,7 @@
 .python-version
 .DS_Store
 data/*
+models/*
+predictions/*
+.vscode/*
+**/__pycache__/*
