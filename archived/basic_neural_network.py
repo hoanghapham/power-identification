@@ -1,3 +1,4 @@
+#%%
 import os
 import torch
 import torch.nn as nn
@@ -104,7 +105,7 @@ class IdeologyPowerDetectionPipeline:
             x_val_tensor = torch.tensor(x_val.toarray(), dtype=torch.float32, device=device)
             y_val_tensor = torch.tensor(y_val, dtype=torch.long, device=device)
             outputs = self.model(x_val_tensor)
-            _, predicted = torch.max(outputs, 1)
+            _, predicted = torch.max(outputs, dim=1)
             
             # Convert tensors to numpy arrays
             predicted = predicted.cpu().numpy()
@@ -154,3 +155,4 @@ print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {fscore:.4f}
 
 # Save predictions (optional)
 # pipeline.save_predictions(task, pcode, test_pred)
+# %%
