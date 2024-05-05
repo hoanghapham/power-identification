@@ -152,9 +152,8 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
             f"Length of token_val is incorrect: {len(token_val)} != {self.max_sentence_length * len(X)}"
 
         # Construct sparse matrices
-        print("Construct matrix")
         mat_size = (len(X), self.max_sentence_length)
-        tokens_sparse = torch.sparse_csr_tensor(crow, col, token_val, size=mat_size, dtype=torch.float32)
+        tokens_sparse = torch.sparse_csr_tensor(crow, col, token_val, size=mat_size, dtype=torch.long)
 
         return tokens_sparse
     
