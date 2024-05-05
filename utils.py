@@ -192,6 +192,8 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
 
 
 class CustomDataset(Dataset):
+    """Read in raw data, use the vectorizer to transform it, and package the data in PyTorch's Dataset format.
+    """
     def __init__(self, data, vectorizer: PositionalEncoder | TfidfVectorizer) -> None:
         self.vectorizer = vectorizer
         texts = [tup[2] for tup in data]
@@ -225,7 +227,23 @@ class DataProcessor():
     def __init__(self) -> None:
         pass
 
-    def load_data(self, folder_path: str | Path, file_list: list, text_head: str = 'text'):
+    def load_data(self, folder_path: str | Path, file_list: list, text_head: str = 'text') -> list[tuple]:
+        """Load the Parliament Debate dataset. 
+
+        Parameters
+        ----------
+        folder_path : str | Path
+            Parent folder containing the text files
+        file_list : list
+            List of files you want to load
+        text_head : str, optional
+            Name of the text column, either 'text' or 'text_en', by default 'text'
+
+        Returns
+        -------
+        list[tuple]
+            Returns a list of tuples containing: text ID, speaker ID, text, label
+        """
         if isinstance(folder_path, str):
             folder_path = Path(folder_path)
 
@@ -275,31 +293,3 @@ class DataProcessor():
         test = [data[i] for i in test_idx]
 
         return train, test
-
-
-    # def encode_data(
-    #         self, 
-    #         texts: list[str],
-    #         fitted_vectorizer: Optional[TfidfVectorizer | PositionalEncoder] = None, 
-    #         init_vec_class: Optional[type] = None,
-    #     ):
-    #     print("Encoding...")
-    #     if fitted_vectorizer is None:
-    #         assert init_vec_class is not None, "Must provide an initial vectorizer class"
-    #         vectorizer = init_vec_class()
-    #         vectorizer.fit(texts)
-    #     else:
-    #         vectorizer = fitted_vectorizer
-
-    #     enc_texts_csr = vectorizer.transform(texts)
-
-    #     if isinstance(enc_texts_csr, csr_matrix):
-    #         enc_texts = torch.from_numpy(enc_texts_csr.todense()).float()
-    #     else:
-    #         enc_texts = enc_texts_csr.to_dense()
-        
-    #     return enc_texts, vectorizer
-
-        
-        
-

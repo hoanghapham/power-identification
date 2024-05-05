@@ -33,13 +33,37 @@ def train_neural_network(
     hidden_size: int = 64, 
     batch_size: int = 64,
     num_epochs: int = 20,
-    early_stop_patience: int = 5
-):
+    early_stop_patience: int = 5,
+    device: str = 'cpu'
+) -> NeuralNetwork:
+    """Train a neural network model
+
+    Parameters
+    ----------
+    train_data : CustomDataset
+    dev_data : CustomDataset
+    num_classes : int, optional
+        Number of classes to be predicted, by default 2
+    hidden_size : int, optional
+        Number of hidden nodes, by default 64
+    batch_size : int, optional
+        Number of samples in a data batch, by default 64
+    num_epochs : int, optional
+        Number of epochs to train, by default 20
+    early_stop_patience : int, optional
+        Number of epochs to wait when the loss cannot be reduced further, by default 5
+    device: str, optional
+        Can be either 'cpu' or 'cuda'. Only use `cuda` if your machine has a graphic card supporting CUDA.
+    Returns
+    -------
+    NeuralNetwork
+    """
     input_size = len(train_data[0][0])
     best_val_loss = float('inf')
     patience_counter = 0
 
-    model = NeuralNetwork(input_size, hidden_size, num_classes)
+    model = NeuralNetwork(input_size, hidden_size, num_classes).to(device)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)  # Adjust learning rate
 
@@ -50,6 +74,8 @@ def train_neural_network(
         
         with tqdm(train_loader, desc=f"Epoch {epoch + 1}", unit="batch") as train_batches:
             for X_train, y_train in train_batches:
+                X_train = X_train.to(device)
+                y_train = y_train.to(device)
                 model(X_train)
                 optimizer.zero_grad()
                 outputs = model(X_train)
@@ -59,8 +85,8 @@ def train_neural_network(
 
         # Evaluate on validation set for early stopping
         model.eval()
-        X_dev = torch.stack([dta[0] for dta in dev_data])
-        y_dev = torch.as_tensor([dev[1] for dev in dev_data], dtype=torch.long)
+        X_dev = torch.stack([dta[0] for dta in dev_data]).to(device)
+        y_dev = torch.as_tensor([dev[1] for dev in dev_data], dtype=torch.long).to(device)
         output = model(X_dev)
         val_loss = criterion(output, y_dev).item()
 
@@ -77,11 +103,13 @@ def train_neural_network(
     return model
 
 
-def evaluate_model(model, test_dataset: CustomDataset):
+def evaluate_model(model: NeuralNetwork, test_dataset: CustomDataset):
+    if next(model.parameters()).device.type == 'cuda':
+        model = model.cpu()
     with torch.no_grad():
         X_test = torch.stack([dta[0] for dta in test_dataset])
         y_test = torch.as_tensor([test[1] for test in test_dataset])
-        y_out = model(X_test)
+        y_out = model(X_test).cpu()
         y_pred = y_out.argmax(dim=1)
         precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='macro')
     return precision, recall, f1

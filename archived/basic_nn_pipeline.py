@@ -25,7 +25,6 @@ print("Prepare data encoder...")
 train_texts = [tup[2] for tup in train_raw]
 train_encoder = TfidfVectorizer(sublinear_tf=True, analyzer="char", ngram_range=(1,3))
 train_encoder.fit(train_texts)
-
 print("Prepare data...")
 train_dataset = CustomDataset(train_raw, train_encoder)
 dev_dataset = CustomDataset(dev_raw, train_encoder)
