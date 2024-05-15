@@ -1,4 +1,5 @@
 from typing import Optional, Callable
+from typing_extensions import Self
 from collections.abc import Iterable
 from collections import defaultdict
 from pathlib import Path
@@ -7,119 +8,50 @@ import csv
 import torch
 from torch.utils.data import Dataset
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
 from scipy.sparse import csr_matrix
 
-def get_data(fname, encoding='utf-8', testset=False, text_head='text', test_size=0.2, seed=None):
-    """Read the test set or training set and split to train/val sets.
-
-    Parameters:
-    fname       The filename to read data from.
-    encoding    The encoding of the file.
-    testset     If True, return only (ids, texts, labels), no
-                training/validation split is done, all labels will
-                be -1 if the file does not include labels.
-    text_head   The header of the text field,
-                useful for reading the English translations.
-    test_size   Size or ratio of the test data (see the documentation
-                of scikit-learn train_test_split() for details).
-    seed        Random seed for reproducible output.
-    """
-    texts, speaker_label = [], dict()
-    with open(fname, "rt", encoding=encoding) as f:
-        csv_r = csv.DictReader(f, delimiter="\t")
-        for row in csv_r:
-            texts.append((row['id'], row['speaker'], row[text_head]))
-            speaker_label[row['speaker']] = int(row.get('label', -1))
-
-    if testset: # return only ID and text and label
-        return ([x[0] for x in texts],
-                [x[2] for x in texts],
-                [speaker_label[x[1]] for x in texts])
-
-    # First, split the speakers to train/test sets such that
-    # there are no overlap of the authors across the split.
-    # This is similar to how orientation test set was split.
-    spkset = list(speaker_label.keys())
-    labelset = list(speaker_label.values())
-    s_trn, s_val, _, _ = train_test_split(spkset, labelset,
-                      test_size=test_size, random_state=seed)
-    s_val = set(s_val)
-    # Now split the speeches based on speakers split above
-    t_trn, t_val, y_trn, y_val = [], [], [], []
-    for i, (_, spk, text) in enumerate(texts):
-        if spk in s_val:
-            t_val.append(text)
-            y_val.append(speaker_label[spk])
-        else:
-            t_trn.append(text)
-            y_trn.append(speaker_label[spk])
-    return t_trn, y_trn, t_val, y_val
-
-
-def get_data_kfold(fname, encoding='utf-8', num_splits=5, text_head='text', seed=None):
-    """Read the data and perform k-fold cross-validation.
-
-    Parameters:
-    fname       The filename to read data from.
-    encoding    The encoding of the file.
-    num_splits  Number of folds for K-fold cross-validation.
-    text_head   The header of the text field,
-                useful for reading the English translations.
-    seed        Random seed for reproducible output.
-    """
-    texts, speaker_label = [], dict()
-    with open(fname, "rt", encoding=encoding) as f:
-        csv_r = csv.DictReader(f, delimiter="\t")
-        for row in csv_r:
-            texts.append((row['id'], row['speaker'], row[text_head]))
-            speaker_label[row['speaker']] = int(row.get('label', -1))
-
-    X = [text for _, _, text in texts]
-    y = [speaker_label[spk] for _, spk, _ in texts]
-
-    kf = KFold(n_splits=num_splits, shuffle=True, random_state=seed)
-    for train_index, val_index in kf.split(X):
-        t_trn, t_val = [X[i] for i in train_index], [X[i] for i in val_index]
-        y_trn, y_val = [y[i] for i in train_index], [y[i] for i in val_index]
-
-        yield t_trn, y_trn, t_val, y_val
-
 
 class PositionalEncoder(BaseEstimator, TransformerMixin):
     def __init__(
             self, 
-            vocabulary: Optional[Iterable] = None, 
-            tokenizer: Optional[Callable] = None
+            vocabulary: Optional[Iterable],
+            tokenizer: Optional[Callable]
         ) -> None:
-        self.vocabulary = vocabulary
+        self.vocabulary_ = vocabulary
         self.tokenizer = tokenizer or self.build_tokenizer()
+        self.max_sentence_length_ = 0
 
-        self.idx2token_: list = []
-        self.token2idx_: dict = {}
-        self.max_sentence_length = 0
+    def token_to_index(self, token):
+        if token in self.vocabulary_:
+            return self.vocabulary_[token]
+        else:
+            return self.vocabulary_['<UNK>']
+
+    def index_to_token(self, index):
+        return list(self.vocabulary_.keys())[index]
 
     def fit(self, X: list[str], y: Optional[list] = None):
         """Learn vocabulary from provided sentences and labels
         May need a sentence splitter?
         """
-        vocabulary = set()
+        vocabulary: set = set()
         max_sentence_length = 0
 
+        # Iterate through sentences in the input, tokenize, and update vocabulary
         for sentence in tqdm(X, total=len(X), desc="Fit\t\t", unit="sample"):
             tokens = self.tokenizer(sentence)
             if len(tokens) > max_sentence_length:
                 max_sentence_length = len(tokens)
             
-            for token in tokens:
-                vocabulary.add(token)
+            new_token_set = set(tokens)
+            vocabulary.union(new_token_set)
         
-        self.idx2token_ = ['<UNK>'] + list(vocabulary) + ['<PAD>']
-        self.token2idx_ = {token: idx for idx, token in enumerate(self.idx2token_)}
-        self.max_sentence_length = max_sentence_length
+        self.vocabulary_ = ['<UNK>'] + list(vocabulary) + ['<PAD>']
+        self.max_sentence_length_ = max_sentence_length
 
         return self
 
@@ -130,33 +62,35 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
         # Iterate through sentences, construct the necessary arrays to create CSR sparse matrix
         for i, text in tqdm(enumerate(X), total=len(X), desc="Transform\t", unit="sample"):
             tokens = self.tokenizer(text)
-            crow.append(i * self.max_sentence_length)
+            crow.append(i * self.max_sentence_length_)
 
             for j, token in enumerate(tokens):
                 col.append(j)
 
                 # Append index of tokens and tags to the val arrays
-                if token in self.token2idx_:
-                    token_val.append(self.token2idx_[token])
+                if token in self.vocabulary_:
+                    token_val.append(self.token_to_index(token))
                 else:
-                    token_val.append(self.token2idx_["<UNK>"])
+                    token_val.append(self.token_to_index("<UNK>"))
 
             # Add padding to make all sentences have the same length
-            padding_amt = self.max_sentence_length - len(tokens)
-            token_val += [self.token2idx_["<PAD>"]] * padding_amt
+            padding_amt = self.max_sentence_length_ - len(tokens)
+            token_val += [self.token_to_index("<PAD>")] * padding_amt
 
             # Column index of the paddings runs from (len of tokens) to max_sentence_length
-            col += list(range(len(tokens), self.max_sentence_length))
+            col += list(range(len(tokens), self.max_sentence_length_))
 
-        assert len(token_val) == self.max_sentence_length * len(X), \
-            f"Length of token_val is incorrect: {len(token_val)} != {self.max_sentence_length * len(X)}"
+        assert len(token_val) == self.max_sentence_length_ * len(X), \
+            f"Length of token_val is incorrect: {len(token_val)} != {self.max_sentence_length_ * len(X)}"
 
         # Construct sparse matrices
-        mat_size = (len(X), self.max_sentence_length)
+        mat_size = (len(X), self.max_sentence_length_)
         tokens_sparse = torch.sparse_csr_tensor(crow, col, token_val, size=mat_size, dtype=torch.long)
 
         return tokens_sparse
     
+    #TODO: use spacy tokenizer
+
     def build_tokenizer(self):
         def simple_tokenizer(sentence):
             words: list = sentence.split(' ')
@@ -191,15 +125,58 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
         return tokens
 
 
-class CustomDataset(Dataset):
-    """Read in raw data, use the vectorizer to transform it, and package the data in PyTorch's Dataset format.
+class RawParliamentData():
+    """Class to hold raw data load directly from the tsv files.
     """
-    def __init__(self, data, vectorizer: PositionalEncoder | TfidfVectorizer) -> None:
-        self.vectorizer = vectorizer
-        texts = [tup[2] for tup in data]
-        labels = [tup[3] for tup in data]
-        enc_texts = self.encode_data(vectorizer, texts)
-        self.data_ = list(zip(enc_texts, labels))
+    def __init__(self, ids: list[str], speakers: list[str], texts: list[str], labels: list[int]) -> None:
+        assert len(ids) == len(speakers) == len(texts) == len(labels), "All arrays must have the same length"
+        self.ids_ = ids
+        self.speakers_ = speakers
+        self.texts_ = texts
+        self.labels_ = labels
+
+    def subset(self, index_list: list[int]):
+
+        data = RawParliamentData(
+            [self.ids_[idx] for idx in index_list],
+            [self.speakers_[idx] for idx in index_list],
+            [self.texts_[idx] for idx in index_list],
+            [self.labels_[idx] for idx in index_list],
+        )
+        
+        return data
+
+    def __getitem__(self, index: int):
+        return (self.ids_[index], self.speakers_[index], self.texts_[index], self.labels_[index])
+
+    def __add__(self, other: Self):
+        return RawParliamentData(
+            self.ids_ + other.ids_,
+            self.speakers_ + other.speakers_,
+            self.texts_ + other.texts_,
+            self.labels_ + other.labels_
+        )
+
+    def __iter__(self):
+        for data in zip(self.ids_, self.speakers_, self.texts_, self.labels_):
+            yield data
+
+    def __len__(self):
+        return len(self.ids_)
+
+
+class ParliamentDataset(Dataset):
+    """Custom Dataset object to hold parliament debate data. Each item in the dataset
+    is a tuple of (input tensor, label)
+    """
+    def __init__(
+            self, 
+            inputs: torch.Tensor, 
+            labels: torch.Tensor, 
+        ) -> None:
+        super().__init__()
+        assert len(inputs) == len(labels), "Inputs and labels have different length"
+        self.data_ = list(zip(inputs, labels))
 
     def __len__(self):
         return len(self.data_)
@@ -210,86 +187,108 @@ class CustomDataset(Dataset):
     def __iter__(self):
         for data in self.data_:
             yield data
+
+
+def load_data(folder_path: str | Path, file_list: list, text_head: str = 'text') -> RawParliamentData:
+    """Load the Parliament Debate dataset. 
+
+    Parameters
+    ----------
+    folder_path : str | Path
+        Parent folder containing the text files
+    file_list : list
+        List of files you want to load
+    text_head : str, optional
+        Name of the text column, either 'text' or 'text_en', by default 'text'
+
+    Returns
+    -------
+    list[tuple]
+        Returns a list of tuples containing: text ID, speaker ID, text, label
+    """
+    if isinstance(folder_path, str):
+        folder_path = Path(folder_path)
+
+    data = RawParliamentData([], [], [], [])
     
-    def encode_data(self, vectorizer: PositionalEncoder | TfidfVectorizer, texts: list[str]):
-        enc_texts_csr = vectorizer.transform(texts)
+    for fname in file_list:
+        print(f"Load {fname}...")
+        tmp_data = _load_one(file_path=folder_path / fname, text_head=text_head)
+
+        data += tmp_data
+
+    return data
+
+
+def _load_one(file_path, encoding: str = 'utf-8', text_head: str = 'text') -> RawParliamentData:
+    """Load one file and return """
+    
+    ids         : list[str] = []
+    speakers    : list[str] = []
+    texts       : list[str] = []
+    labels      : list[int] = []
+
+    with open(file_path, "rt", encoding=encoding) as f:
+        csv_r = csv.DictReader(f, delimiter="\t")
         
-        if isinstance(enc_texts_csr, csr_matrix):
-            enc_texts = torch.from_numpy(enc_texts_csr.todense()).float()
-        else:
-            enc_texts = enc_texts_csr.to_dense()
+        for row in csv_r:
+            ids.append(row.get('id'))
+            speakers.append(row.get('speaker'))
+            texts.append(row.get(text_head))
+            labels.append(int(row.get('label', -1)))
         
-        return enc_texts
+    return RawParliamentData(ids, speakers, texts, labels)
 
 
-class DataProcessor():
+def split_data(data: RawParliamentData, test_size=0.2, random_state=None) -> tuple[RawParliamentData, RawParliamentData]:
+    """Return train-test sets divided by speakers, so that speakers of the train and test set do not overlap"""
+    speaker_indices = defaultdict(list)
 
-    def __init__(self) -> None:
-        pass
+    # Inverted index: {speaker: [idx1, idx2]}
+    for idx, speaker in enumerate(data.speakers_):
+        speaker_indices[speaker].append(idx)
 
-    def load_data(self, folder_path: str | Path, file_list: list, text_head: str = 'text') -> list[tuple]:
-        """Load the Parliament Debate dataset. 
+    # Split list of (indices list)
+    train_indices_lst, test_indices_lst = train_test_split(
+        list(speaker_indices.values()), 
+        test_size=test_size, 
+        random_state=random_state
+    )
 
-        Parameters
-        ----------
-        folder_path : str | Path
-            Parent folder containing the text files
-        file_list : list
-            List of files you want to load
-        text_head : str, optional
-            Name of the text column, either 'text' or 'text_en', by default 'text'
+    train_indices = [idx for lst in train_indices_lst for idx in lst]
+    test_indices = [idx for lst in test_indices_lst for idx in lst]
+    
+    return data.subset(train_indices), data.subset(test_indices)
 
-        Returns
-        -------
-        list[tuple]
-            Returns a list of tuples containing: text ID, speaker ID, text, label
-        """
-        if isinstance(folder_path, str):
-            folder_path = Path(folder_path)
 
-        data: list[tuple] = []
-        
-        for fname in file_list:
-            print(f"Load {fname}...")
-            data += self._load_one(file_path=folder_path / fname, text_head=text_head)
-                
-        return data
+def encode_text(encoder: PositionalEncoder | TfidfVectorizer, texts: list[str]) -> torch.Tensor:
+    """Convenience function to encode text using a supplied encoder
 
-    def _load_one(self, file_path, encoding: str = 'utf-8', text_head: str = 'text'):
-        
-        data: list[tuple] = []
+    Parameters
+    ----------
+    encoder : PositionalEncoder | TfidfVectorizer
+        A fitted (trained) encoder
+    texts : list[str]
 
-        with open(file_path, "rt", encoding=encoding) as f:
-            csv_r = csv.DictReader(f, delimiter="\t")
-            for row in csv_r:
-                data.append((
-                    row.get('id'), 
-                    row.get('speaker'), 
-                    row.get(text_head), 
-                    int(row.get('label', -1))
-                ))
-            
-        return data
+    Returns
+    -------
+    torch.Tensor
+        Tensor containing vector representation of text
+    """
+    # No fit_, because the encoder should be already fitted with training data
+    enc_texts_csr = encoder.transform(texts)  
+    
+    if isinstance(enc_texts_csr, csr_matrix):
+        enc_texts = torch.from_numpy(enc_texts_csr.todense()).float()
+    else:
+        enc_texts = enc_texts_csr.to_dense()
+    
+    return enc_texts
 
-    def split_data(self, data, test_size=0.2, random_state=0):
-        """Return train-test sets divided by speakers"""
-        speaker_indices = defaultdict(list)
 
-        speakers = [tup[1] for tup in data]
+def create_dataset(raw_data: RawParliamentData, vectorizer: PositionalEncoder | TfidfVectorizer):
+    """Convenience function to create the final dataset"""
+    inputs = encode_text(vectorizer, raw_data.texts_)
+    labels = torch.tensor(raw_data.labels_)
+    return ParliamentDataset(inputs, labels)
 
-        for idx, speaker in enumerate(speakers):
-            speaker_indices[speaker].append(idx)
-
-        train_idx_lst, test_idx_lst = train_test_split(
-            list(speaker_indices.values()), 
-            test_size=test_size, 
-            random_state=random_state
-        )
-
-        train_idx = [idx for lst in train_idx_lst for idx in lst]
-        test_idx = [idx for lst in test_idx_lst for idx in lst]
-
-        train = [data[i] for i in train_idx]
-        test = [data[i] for i in test_idx]
-
-        return train, test
