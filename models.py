@@ -3,16 +3,24 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import precision_recall_fscore_support
-from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
-from utils import ParliamentDataset, RawParliamentData, encode_text
+from utils import EncodedDataset
 
+from typing import Optional
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Check if CUDA is available
 
 class TrainConfig():
-    def __init__(self, batch_size: int, num_epochs: int, early_stop: bool, violation_limit: int) -> None:
+    def __init__(
+            self, 
+            batch_size: int,
+            optimizer_params: Optional[dict],
+            num_epochs: int,
+            early_stop: bool,
+            violation_limit: int
+        ) -> None:
         self.batch_size         = batch_size
+        self.optimizer_params   = optimizer_params
         self.num_epochs         = num_epochs
         self.early_stops        = early_stop
         self.violation_limit    = violation_limit
@@ -34,19 +42,18 @@ class NeuralNetwork(nn.Module):
         out = self.fc2(out)
         return out
 
-
     def fit(
         self,
-        train_dataset: ParliamentDataset,
-        dev_dataset: ParliamentDataset,
+        train_dataset: EncodedDataset,
+        dev_dataset: EncodedDataset,
         train_config: TrainConfig,
     ):
         """Train a neural network model
 
         Parameters
         ----------
-        train_data : ParliamentDataset
-        dev_data : ParliamentDataset
+        train_data : EncodedDataset
+        dev_data : EncodedDataset
         num_classes : int, optional
             Number of classes to be predicted, by default 2
         hidden_size : int, optional
@@ -63,8 +70,13 @@ class NeuralNetwork(nn.Module):
         -------
         NeuralNetwork
         """
+        if self.device == 'cuda':
+            if torch.cuda.is_available():
+                self.to('cuda')
+            else:
+                print("cuda not available, use cpu")
+                self.to('cpu')
 
-        # input_size = len(train_data[0][0])
         best_val_loss = float('inf')
         violation_counter = 0
 
@@ -105,14 +117,12 @@ class NeuralNetwork(nn.Module):
                     break
             
 
-def evaluate_model(model: NeuralNetwork, test_dataset: ParliamentDataset):
-    if next(model.parameters()).device.type == 'cuda':
-        model = model.cpu()
+def evaluate_nn_model(model: NeuralNetwork, test_dataset: EncodedDataset):
     with torch.no_grad():
         # X_test = torch.stack([dta[0] for dta in test_dataset])
-        X_test = torch.stack([test[0] for test in test_dataset])
-        y_test = torch.stack([test[1] for test in test_dataset])
-        y_out = model(X_test).cpu()
+        X_test = torch.stack([test[0] for test in test_dataset]).to(model.device)
+        y_test = torch.stack([test[1] for test in test_dataset]).to(model.device)
+        y_out = model(X_test)
         y_pred = y_out.argmax(dim=1)
         precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='macro')
     return precision, recall, f1
