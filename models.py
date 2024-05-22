@@ -1,12 +1,17 @@
 #%%
+from typing import Optional
+
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import precision_recall_fscore_support
 from tqdm import tqdm
-from utils import EncodedDataset, PositionalEncoder
 
-from typing import Optional
+import numpy as np
+import pandas as pd
+import altair as alt
+
+from utils import EncodedDataset, PositionalEncoder
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Check if CUDA is available
 
@@ -25,38 +30,59 @@ class TrainConfig():
         
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, input_size, num_classes, hidden_size = 64, device = 'cpu'):
+    def __init__(
+            self, 
+            input_size, 
+            hidden_size = 64, 
+            output_size = 1,  # binary classification only need 1 output
+            device = 'cpu',
+        ):
         assert device in ['cpu', 'cuda'], "device must be 'cpu' or 'cuda'"
-
         super().__init__()
 
         # Define the layers of the neural network
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_size, num_classes)
+
+        self.network = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, output_size),
+        )
 
         if device == 'cuda':
             if torch.cuda.is_available():
-                self.to('cuda')
                 self.device = 'cuda'
+                self.cuda()
             else:
                 print("CUDA not available. Run model on CPU")
                 self.device = 'cpu'
+                self.cpu()
         else:
             self.device = 'cpu'
+            self.cpu()
 
-    def forward(self, x):
+        self.sigmoid = nn.Sigmoid()
+
+        self.training_accuracy_ = []
+        self.training_loss_ = []
+
+    def forward(self, x: torch.Tensor):
         # Define the forward pass of the neural network
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        return out
+        logits = self.network(x.to(self.device)).squeeze()
+        return logits
+
+    def predict(self, x: torch.Tensor):
+        logits = self.forward(x.to(self.device))
+        pred = (self.sigmoid(logits) >= 0.5).squeeze() * 1.0  # Convert to 1-0
+        return pred
+
 
     def fit(
         self,
         train_dataloader: DataLoader,
-        dev_dataloader: DataLoader,
         train_config: TrainConfig,
+        disable_progress_bar: bool = True
     ):
         """Train a neural network model
 
@@ -64,7 +90,7 @@ class NeuralNetwork(nn.Module):
         ----------
         train_data : EncodedDataset
         dev_data : EncodedDataset
-        num_classes : int, optional
+        output_size : int, optional
             Number of classes to be predicted, by default 2
         hidden_size : int, optional
             Number of hidden nodes, by default 64
@@ -80,52 +106,49 @@ class NeuralNetwork(nn.Module):
         -------
         NeuralNetwork
         """
-        best_val_loss = float('inf')
-        violation_counter = 0
+        best_loss = float('inf')
+        violations = 0
         loss_function = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adjust learning rate
 
         for epoch in range(train_config.num_epochs):
             self.train()
             
-            with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}", unit="batch") as train_batches:
+            with tqdm(train_dataloader, desc=f"Epoch {epoch + 1}", unit="batch", disable=disable_progress_bar) as train_batches:
                 for X_train, y_train in train_batches:
                     X_train = X_train.to(self.device)
-                    y_train = y_train.to(self.device)
+                    y_train = y_train.float().to(self.device)
                     optimizer.zero_grad()
-                    outputs = self(X_train)
-                    loss = loss_function(outputs, y_train)
+                    logits = self(X_train)
+
+                    # print(logits.shape, y_train.shape)
+                    loss = loss_function(logits, y_train)
                     loss.backward()
                     optimizer.step()
 
-            # Evaluate on validation set for early stopping
-            self.eval()
-            X_dev = torch.concat([tup[0] for tup in list(dev_dataloader)]).to(self.device)
-            y_dev = torch.concat([tup[1] for tup in list(dev_dataloader)]).to(self.device)
-            output = self(X_dev)
-            val_loss = loss_function(output, y_dev).item()
-            
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                violation_counter = 0
-            else:
-                violation_counter += 1
+                    # Evaluate on train set 
+                    self.eval()
+                    pred = self.predict(X_train)
+                    corrects = (pred == y_train).sum().item()
+                    accuracy = corrects / len(y_train)
 
-            if train_config.early_stops:
-                if violation_counter >= train_config.violation_limit:
-                    print(f"Validation loss did not improve for {train_config.violation_limit} epochs. Stopping early.")
-                    break
-            
+                    self.training_accuracy_.append(accuracy)
+                    self.training_loss_.append(loss.item())
 
-def evaluate_nn_model(model: NeuralNetwork, test_dataset: EncodedDataset):
-    with torch.no_grad():
-        # X_test = torch.stack([dta[0] for dta in test_dataset])
-        X_test = torch.stack([test[0] for test in test_dataset]).to(model.device)
-        y_test = torch.stack([test[1] for test in test_dataset]).to(model.device)
-        y_out = model(X_test)
-        y_pred = y_out.argmax(dim=1)
-        precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='macro')
-    return precision, recall, f1
+                    train_batches.set_postfix(batch_accuracy=accuracy, loss=loss.item())
+
+                    torch.cuda.empty_cache()
+            
+                    if loss < best_loss:
+                        best_loss = loss
+                        violations = 0
+                    else:
+                        violations += 1
+
+                    if train_config.early_stop:
+                        if violations >= train_config.violation_limit:
+                            print(f"Validation loss did not improve for {train_config.violation_limit} iterations. Stopping early.")
+                            break
 
 
 class RNNClassifier(nn.Module):
@@ -134,8 +157,8 @@ class RNNClassifier(nn.Module):
         encoder: PositionalEncoder,
         rnn_network: nn.Module = nn.LSTM,
         word_embedding_dim: int = 32,
-        class_num: int = 2,
         hidden_dim: int = 64,
+        output_dim: int = 1,  # binary classification only need 1 output
         bidirectional: bool = False,
         dropout: float = 0.0,
         device: str = 'cpu'
@@ -165,7 +188,7 @@ class RNNClassifier(nn.Module):
         super().__init__()
         self.hidden_dim_        = hidden_dim
         self.vocabulary_size_   = len(encoder.vocabulary)
-        self.class_num_         = class_num
+        self.output_dim_        = output_dim
         self.pad_token_idx_     = encoder.token_to_index('<PAD>')
         self.encoder_           = encoder
 
@@ -176,6 +199,7 @@ class RNNClassifier(nn.Module):
             else:
                 print("CUDA not available. Run model on CPU.")
                 self.device = 'cpu'
+                self.to('cpu')
         else:
             self.device = 'cpu'
 
@@ -240,14 +264,21 @@ class RNNClassifier(nn.Module):
         reshaped = class_space.view(batch_size, max_sentence_length, 1)
 
         # With RNN, need to collapse the soft prediction (logit) into a one-dimension vector
-        # TODO: Ask Fredrik about how to collapse the prediction
-        collapsed = torch.stack([reshaped[i, j-1] for i, j in enumerate(sentence_lengths)]).squeeze()
+        # Get the last token in each sentence as the output of RNN
+        collapsed_output = torch.stack([reshaped[i, j-1] for i, j in enumerate(sentence_lengths)]).squeeze().to(self.device)
 
         # sigmoid applied to convert to value between 0 - 1
         # Use sigmoid as output for nn.CrossEntropyLoss()
-        scores = self._sigmoid(collapsed)
+        # scores = self._sigmoid(collapsed)
 
-        return scores.to(self.device)
+        return collapsed_output
+    
+
+    def predict(self, x: torch.Tensor):
+        """Make predictions for the input tensor"""
+        logits = self.forward(x.to(self.device))
+        pred = (self._sigmoid(logits) >= 0.5).squeeze() * 1.0  # Convert to 1-0
+        return pred
 
 
     def fit(self, train_dataloader: DataLoader, train_config: TrainConfig, no_progress_bar: bool = True) -> None:
@@ -292,10 +323,10 @@ class RNNClassifier(nn.Module):
 
                     # Reset gradients, then run forward pass
                     self.zero_grad()
-                    scores = self(train_inputs)
+                    logits = self(train_inputs)
 
                     # Calc loss
-                    loss = loss_function(scores.view(-1), train_targets.view(-1))
+                    loss = loss_function(logits.view(-1), train_targets.view(-1))
 
                     # Backward propagation. After each iteration through the batches,
                     # accumulate the gradient for each theta
@@ -304,8 +335,8 @@ class RNNClassifier(nn.Module):
                     optimizer.step()
 
                     # Evaluate with training batch accuracy
-                    pred = scores >= 0.5
-                    correct = (pred * 1.0 == train_targets).sum().item()
+                    pred = self.predict(train_inputs)
+                    correct = (pred == train_targets).sum().item()
                     accuracy = correct / len(train_targets)
 
                     # Save accuracy and loss for plotting
@@ -328,3 +359,124 @@ class RNNClassifier(nn.Module):
                             break
 
 
+def save_model(model: NeuralNetwork | RNNClassifier, model_name: str):
+    """Save model state to disc"""
+    torch.save(model.state_dict(), f"models/{model_name}.pt")
+    np.save(f"models/{model_name}_training_accuracy_.npy", model.training_accuracy_)
+    np.save(f"models/{model_name}_training_loss_.npy", model.training_loss_)
+
+
+def load_model(model: NeuralNetwork | RNNClassifier, model_name: str):
+    """Pass in an initiated model and load the saved state"""
+    model.load_state_dict(torch.load(f"models/{model_name}.pt"))
+    model.training_accuracy_ = np.load(f"models/{model_name}_training_accuracy_.npy")
+    model.training_loss_ = np.load(f"models/{model_name}_training_loss_.npy")
+    return model
+
+
+
+def plot_results(model: NeuralNetwork | RNNClassifier, train_config: TrainConfig, train_dataloader: DataLoader):
+    # Plot training accuracy and loss side-by-side
+    epochs_arr = []
+    for epoch in range(1, train_config.num_epochs + 1):
+        epochs_arr += [epoch] * len(train_dataloader)
+
+    result_df = pd.DataFrame({
+        'training_acc': model.training_accuracy_,
+        'training_loss': model.training_loss_,
+        'iteration': range(1, len(model.training_accuracy_) + 1),
+        'epoch': epochs_arr
+    })
+
+    nn_training_accuracy_chart = alt.Chart(result_df).mark_line().encode(
+        x = alt.X("iteration:N", axis = alt.Axis(title = 'Iteration', values=list(range(0, len(model.training_accuracy_), 100)), labelAngle=-30)),
+        y = alt.Y("training_acc:Q", axis = alt.Axis(title = 'Accuracy')),
+        color = alt.Color("epoch:N", scale=alt.Scale(scheme='category20'), title='Epoch'),
+    ).properties(
+        width=600,
+        height=400,
+        title = 'Training Accuracy'
+    )
+
+    nn_training_loss_chart = alt.Chart(result_df).mark_line().encode(
+        x = alt.X("iteration:N", axis = alt.Axis(title = 'Iteration', values=list(range(0, len(model.training_accuracy_), 100)), labelAngle=-30)),
+        y = alt.Y("training_loss:Q", axis = alt.Axis(title = 'Loss')),
+        color = alt.Color("epoch:N", scale=alt.Scale(scheme='category20'), title='Epoch'),
+    ).properties(
+        width=600,
+        height=400,
+        title = 'Training Loss'
+    )
+
+    (nn_training_accuracy_chart | nn_training_loss_chart).properties(
+        title = 'Base Neural Network with Tf-Idf vectors'
+    ).show()
+    
+
+def evaluate_nn_model(model: NeuralNetwork, test_dataset: EncodedDataset):
+    with torch.no_grad():
+        # X_test = torch.stack([dta[0] for dta in test_dataset])
+        X_test = torch.stack([test[0] for test in test_dataset]).to(model.device)
+        y_test = torch.stack([test[1] for test in test_dataset]).to(model.device)
+        y_pred = model.predict(X_test)
+
+        true_pos = sum([pred == y == 1 for pred, y in zip(y_pred, y_test)])
+        true_neg = sum([pred == y == 0 for pred, y in zip(y_pred, y_test)])
+        false_pos = sum([(pred == 1) * (y == 0) for pred, y in zip(y_pred, y_test)])
+        false_neg = sum([(pred == 0) * (y == 1) for pred, y in zip(y_pred, y_test)])
+        total = len(y_test)
+    
+    precision = (true_pos + true_neg) / total
+    recall = true_pos / (true_pos + false_neg)
+    f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+
+    return precision.item(), recall.item(), f1.item()
+
+
+def evaluate_rnn_model(
+        model: nn.Module | RNNClassifier,
+        test_dataloader,
+        train_encoder
+    ) -> float:
+    """Evaluate the model on an inputs-targets set, using accuracy metric.
+
+    Parameters
+    ----------
+    model : nn.Module
+        Should be one of the two custom RNN taggers we defined.
+    inputs : torch.Tensor
+    targets : torch.Tensor
+    pad_tag_idx : int
+        Index of the <PAD> tag in the tagset to be ignored when calculating accuracy
+
+    Returns
+    -------
+    float
+        Accuracy metric (ignored the <PAD> tag)
+    """
+    true_pos = 0
+    true_neg = 0
+    false_pos = 0
+    false_neg = 0
+    total = 0
+
+    for ids, speakers, raw_inputs, raw_targets in tqdm(test_dataloader, unit="batch", desc="Predicting"):
+
+        batch_encoder = PositionalEncoder(vocabulary=train_encoder.vocabulary)
+        inputs = batch_encoder.fit_transform(raw_inputs)
+        targets = torch.as_tensor(raw_targets, dtype=torch.float).to(model.device)  # nn.CrossEntropyLoss() require target to be float
+
+        # Make prediction
+        pred = model.predict(inputs.to(model.device))
+        true_pos += sum([pred == y == 1 for pred, y in zip(pred, targets)])
+        true_neg += sum([pred == y == 0 for pred, y in zip(pred, targets)])
+        false_pos += sum([(pred == 1) * (y == 0) for pred, y in zip(pred, targets)])
+        false_neg += sum([(pred == 0) * (y == 1) for pred, y in zip(pred, targets)])
+        total += len(targets)
+    
+
+    precision = (true_pos + true_neg) / total
+    recall = true_pos / (true_pos + false_neg)
+    f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+
+    return precision.item(), recall.item(), f1.item()

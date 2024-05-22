@@ -218,7 +218,7 @@ def load_data(folder_path: str | Path, file_list: list, text_head: str = 'text')
     data = RawDataset([], [], [], [])
     
     for fname in file_list:
-        print(f"Load {fname}...")
+        # print(f"Load {fname}...")
         tmp_data = _load_one(file_path=folder_path / fname, text_head=text_head)
 
         data += tmp_data
