@@ -282,3 +282,34 @@ def encode_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectoriz
 
     return EncodedDataset(inputs, labels)
 
+
+mapping_dict = {"at": "Austria",
+"ba": "Bosnia and Herzegovina",
+"be": "Belgium",
+"bg": "Bulgaria",
+"cz": "Czechia",
+"dk": "Denmark",
+"ee": "Estonia",
+"es": "Spain",
+"es-ct": "Catalonia",
+"es-ga": "Galicia",
+"es-pv": "Basque Country",
+"fi": "Finland",
+"fr": "France",
+"gb": "Great Britain",
+"gr": "Greece",
+"hr": "Croatia",
+"hu": "Hungary",
+"is": "Iceland",
+"it": "Italy",
+"lv": "Latvia",
+"nl": "The Netherlands",
+"no": "Norway",
+"pl": "Poland",
+"pt": "Portugal",
+"rs": "Serbia",
+"se": "Sweden",
+"si": "Slovenia",
+"tr": "Turkey",
+"ua": "Ukraine"
+}
