@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import cohen_kappa_score
 from tqdm import tqdm
 
 import numpy as np
@@ -27,7 +27,16 @@ class TrainConfig():
         self.num_epochs         = num_epochs
         self.violation_limit    = violation_limit
         self.early_stop        = early_stop
-        
+
+class SVMClassifier():
+    def __init__(self) -> None:
+        pass
+
+class SVClassifier():
+    def __init__(self) -> None:
+        pass
+
+
 
 class NeuralNetwork(nn.Module):
     def __init__(
@@ -35,6 +44,9 @@ class NeuralNetwork(nn.Module):
             input_size, 
             hidden_size = 64, 
             output_size = 1,  # binary classification only need 1 output
+            positive_pred_threshold: float = 0.5,
+            # class_weights: Optional[torch.Tensor] = torch.Tensor([1.0, 1.0]),
+            pos_weight: float = 1.0,
             device = 'cpu',
         ):
         assert device in ['cpu', 'cuda'], "device must be 'cpu' or 'cuda'"
@@ -63,6 +75,9 @@ class NeuralNetwork(nn.Module):
             self.cpu()
 
         self.sigmoid = nn.Sigmoid()
+        self.positive_perd_threshold = positive_pred_threshold
+        # self.class_weights = class_weights.to(self.device)
+        self.pos_weight = torch.Tensor([pos_weight]).to(self.device)
 
         self.training_accuracy_ = []
         self.training_loss_ = []
@@ -74,7 +89,7 @@ class NeuralNetwork(nn.Module):
 
     def predict(self, x: torch.Tensor):
         logits = self.forward(x.to(self.device))
-        pred = (self.sigmoid(logits) >= 0.5).squeeze() * 1.0  # Convert to 1-0
+        pred = (self.sigmoid(logits) >= self.positive_perd_threshold).squeeze() * 1.0  # Convert to 1-0
         return pred
 
 
@@ -108,8 +123,9 @@ class NeuralNetwork(nn.Module):
         """
         best_loss = float('inf')
         violations = 0
-        loss_function = nn.CrossEntropyLoss()
+        loss_function = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
         optimizer = optim.Adam(self.parameters(), lr=0.001)  # Adjust learning rate
+        print()
 
         for epoch in range(train_config.num_epochs):
             self.train()
@@ -429,8 +445,9 @@ def evaluate_nn_model(model: NeuralNetwork, test_dataset: EncodedDataset):
     precision = (true_pos + true_neg) / total
     recall = true_pos / (true_pos + false_neg)
     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+    kappa = cohen_kappa_score(y_pred.cpu(), y_test.cpu(), labels=[0, 1], weights='linear')
 
-    return precision.item(), recall.item(), f1.item()
+    return precision.item(), recall.item(), f1.item(), kappa
 
 
 def evaluate_rnn_model(
@@ -480,3 +497,4 @@ def evaluate_rnn_model(
     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
 
     return precision.item(), recall.item(), f1.item()
+# %%
