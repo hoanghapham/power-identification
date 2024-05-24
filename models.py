@@ -75,7 +75,7 @@ class NeuralNetwork(nn.Module):
             self.cpu()
 
         self.sigmoid = nn.Sigmoid()
-        self.positive_perd_threshold = positive_pred_threshold
+        self.positive_pred_threshold = positive_pred_threshold
         # self.class_weights = class_weights.to(self.device)
         self.pos_weight = torch.Tensor([pos_weight]).to(self.device)
 
@@ -87,9 +87,11 @@ class NeuralNetwork(nn.Module):
         logits = self.network(x.to(self.device)).squeeze()
         return logits
 
-    def predict(self, x: torch.Tensor):
+    def predict(self, x: torch.Tensor, positive_pred_threshold: float = None):
+        if not positive_pred_threshold:
+            positive_pred_threshold = self.positive_pred_threshold
         logits = self.forward(x.to(self.device))
-        pred = (self.sigmoid(logits) >= self.positive_perd_threshold).squeeze() * 1.0  # Convert to 1-0
+        pred = (self.sigmoid(logits) >= positive_pred_threshold).squeeze() * 1.0  # Convert to 1-0
         return pred
 
 
