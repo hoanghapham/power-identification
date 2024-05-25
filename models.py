@@ -5,7 +5,7 @@ from pathlib import Path
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from sklearn.metrics import cohen_kappa_score
+from sklearn.metrics import cohen_kappa_score, roc_auc_score, roc_curve
 from tqdm import tqdm
 
 import numpy as np
@@ -496,10 +496,39 @@ def evaluate_rnn_model(
         false_neg += sum([(pred == 0) * (y == 1) for pred, y in zip(pred, targets)])
         total += len(targets)
     
-
+    accuracy = (true_pos + true_neg) / total
     precision = (true_pos + true_neg) / total
     recall = true_pos / (true_pos + false_neg)
     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+    auc = roc_auc_score(targets.cpu(), pred.cpu())
 
-    return precision.item(), recall.item(), f1.item()
+    print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
+
+    # return  precision.item(), recall.item(), f1.item()
 # %%
+
+
+def evaluate(y_test, y_pred) -> float:
+    
+    true_pos = sum([pred == y == 1 for pred, y in zip(y_pred, y_test)])
+    true_neg = sum([pred == y == 0 for pred, y in zip(y_pred, y_test)])
+    false_pos = sum([(pred == 1) * (y == 0) for pred, y in zip(y_pred, y_test)])
+    false_neg = sum([(pred == 0) * (y == 1) for pred, y in zip(y_pred, y_test)])
+    total = len(y_test)
+
+    accuracy = (true_pos + true_neg) / total
+    precision = true_pos / (true_pos + false_pos)
+    recall = true_pos / (true_pos + false_neg)
+    f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+    auc = roc_auc_score(y_test, y_pred)
+
+    result = {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "auc": auc
+    }
+
+    print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
+    return result
