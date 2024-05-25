@@ -1,5 +1,6 @@
 #%%
 from typing import Optional
+from pathlib import Path
 
 import torch
 from torch import nn, optim
@@ -47,6 +48,7 @@ class NeuralNetwork(nn.Module):
             positive_pred_threshold: float = 0.5,
             # class_weights: Optional[torch.Tensor] = torch.Tensor([1.0, 1.0]),
             pos_weight: float = 1.0,
+            dropout: float = 0,
             device = 'cpu',
         ):
         assert device in ['cpu', 'cuda'], "device must be 'cpu' or 'cuda'"
@@ -55,6 +57,7 @@ class NeuralNetwork(nn.Module):
         # Define the layers of the neural network
 
         self.network = nn.Sequential(
+            nn.Dropout(dropout),
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
@@ -79,8 +82,8 @@ class NeuralNetwork(nn.Module):
         # self.class_weights = class_weights.to(self.device)
         self.pos_weight = torch.Tensor([pos_weight]).to(self.device)
 
-        self.training_accuracy_ = []
-        self.training_loss_ = []
+        self.training_accuracy_: list = []
+        self.training_loss_: list = []
 
     def forward(self, x: torch.Tensor):
         # Define the forward pass of the neural network
@@ -377,18 +380,18 @@ class RNNClassifier(nn.Module):
                             break
 
 
-def save_model(model: NeuralNetwork | RNNClassifier, model_name: str):
+def save_model(model: NeuralNetwork | RNNClassifier, base_path: str | Path, model_name: str):
     """Save model state to disc"""
-    torch.save(model.state_dict(), f"models/{model_name}.pt")
-    np.save(f"models/{model_name}_training_accuracy_.npy", model.training_accuracy_)
-    np.save(f"models/{model_name}_training_loss_.npy", model.training_loss_)
+    torch.save(model.state_dict(), f"{base_path}/{model_name}.pt")
+    np.save(f"{base_path}/{model_name}_training_accuracy_.npy", model.training_accuracy_)
+    np.save(f"{base_path}/{model_name}_training_loss_.npy", model.training_loss_)
 
 
-def load_model(model: NeuralNetwork | RNNClassifier, model_name: str):
+def load_model(model: NeuralNetwork | RNNClassifier, base_path: str | Path, model_name: str):
     """Pass in an initiated model and load the saved state"""
-    model.load_state_dict(torch.load(f"models/{model_name}.pt"))
-    model.training_accuracy_ = np.load(f"models/{model_name}_training_accuracy_.npy")
-    model.training_loss_ = np.load(f"models/{model_name}_training_loss_.npy")
+    model.load_state_dict(torch.load(f"{base_path}/{model_name}.pt"))
+    model.training_accuracy_ = np.load(f"{base_path}/{model_name}_training_accuracy_.npy")
+    model.training_loss_ = np.load(f"{base_path}/{model_name}_training_loss_.npy")
     return model
 
 
@@ -431,7 +434,7 @@ def plot_results(model: NeuralNetwork | RNNClassifier, train_config: TrainConfig
     ).show()
     
 
-def evaluate_nn_model(model: NeuralNetwork, test_dataset: EncodedDataset):
+def evaluate_nn_model(y_pred, y_test, test_dataset: EncodedDataset):
     with torch.no_grad():
         # X_test = torch.stack([dta[0] for dta in test_dataset])
         X_test = torch.stack([test[0] for test in test_dataset]).to(model.device)
