@@ -455,60 +455,60 @@ def evaluate_nn_model(y_pred, y_test, test_dataset: EncodedDataset):
     return precision.item(), recall.item(), f1.item(), kappa
 
 
-def evaluate_rnn_model(
-        model: nn.Module | RNNClassifier,
-        test_dataloader,
-        train_encoder
-    ) -> float:
-    """Evaluate the model on an inputs-targets set, using accuracy metric.
+# def evaluate_rnn_model(
+#         model: nn.Module | RNNClassifier,
+#         test_dataloader,
+#         train_encoder
+#     ) -> float:
+#     """Evaluate the model on an inputs-targets set, using accuracy metric.
 
-    Parameters
-    ----------
-    model : nn.Module
-        Should be one of the two custom RNN taggers we defined.
-    inputs : torch.Tensor
-    targets : torch.Tensor
-    pad_tag_idx : int
-        Index of the <PAD> tag in the tagset to be ignored when calculating accuracy
+#     Parameters
+#     ----------
+#     model : nn.Module
+#         Should be one of the two custom RNN taggers we defined.
+#     inputs : torch.Tensor
+#     targets : torch.Tensor
+#     pad_tag_idx : int
+#         Index of the <PAD> tag in the tagset to be ignored when calculating accuracy
 
-    Returns
-    -------
-    float
-        Accuracy metric (ignored the <PAD> tag)
-    """
-    true_pos = 0
-    true_neg = 0
-    false_pos = 0
-    false_neg = 0
-    total = 0
+#     Returns
+#     -------
+#     float
+#         Accuracy metric (ignored the <PAD> tag)
+#     """
+#     true_pos = 0
+#     true_neg = 0
+#     false_pos = 0
+#     false_neg = 0
+#     total = 0
 
-    for ids, speakers, raw_inputs, raw_targets in tqdm(test_dataloader, unit="batch", desc="Predicting"):
+#     for ids, speakers, raw_inputs, raw_targets in tqdm(test_dataloader, unit="batch", desc="Predicting"):
 
-        batch_encoder = PositionalEncoder(vocabulary=train_encoder.vocabulary)
-        inputs = batch_encoder.fit_transform(raw_inputs)
-        targets = torch.as_tensor(raw_targets, dtype=torch.float).to(model.device)  # nn.CrossEntropyLoss() require target to be float
+#         batch_encoder = PositionalEncoder(vocabulary=train_encoder.vocabulary)
+#         inputs = batch_encoder.fit_transform(raw_inputs)
+#         targets = torch.as_tensor(raw_targets, dtype=torch.float).to(model.device)  # nn.CrossEntropyLoss() require target to be float
 
-        # Make prediction
-        pred = model.predict(inputs.to(model.device))
-        true_pos += sum([pred == y == 1 for pred, y in zip(pred, targets)])
-        true_neg += sum([pred == y == 0 for pred, y in zip(pred, targets)])
-        false_pos += sum([(pred == 1) * (y == 0) for pred, y in zip(pred, targets)])
-        false_neg += sum([(pred == 0) * (y == 1) for pred, y in zip(pred, targets)])
-        total += len(targets)
+#         # Make prediction
+#         pred = model.predict(inputs.to(model.device))
+#         true_pos += sum([pred == y == 1 for pred, y in zip(pred, targets)])
+#         true_neg += sum([pred == y == 0 for pred, y in zip(pred, targets)])
+#         false_pos += sum([(pred == 1) * (y == 0) for pred, y in zip(pred, targets)])
+#         false_neg += sum([(pred == 0) * (y == 1) for pred, y in zip(pred, targets)])
+#         total += len(targets)
     
-    accuracy = (true_pos + true_neg) / total
-    precision = (true_pos + true_neg) / total
-    recall = true_pos / (true_pos + false_neg)
-    f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
-    auc = roc_auc_score(targets.cpu(), pred.cpu())
+#     accuracy = (true_pos + true_neg) / total
+#     precision = (true_pos + true_neg) / total
+#     recall = true_pos / (true_pos + false_neg)
+#     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
+#     auc = roc_auc_score(targets.cpu(), pred.cpu())
 
-    print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
+#     print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
 
-    # return  precision.item(), recall.item(), f1.item()
+#     return  precision.item(), recall.item(), f1.item()
 # %%
 
 
-def evaluate(y_test, y_pred) -> float:
+def evaluate(y_test, y_pred, logits) -> dict:
     
     true_pos = sum([pred == y == 1 for pred, y in zip(y_pred, y_test)])
     true_neg = sum([pred == y == 0 for pred, y in zip(y_pred, y_test)])
@@ -520,7 +520,7 @@ def evaluate(y_test, y_pred) -> float:
     precision = true_pos / (true_pos + false_pos)
     recall = true_pos / (true_pos + false_neg)
     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
-    auc = roc_auc_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, logits)
 
     result = {
         "accuracy": accuracy,
