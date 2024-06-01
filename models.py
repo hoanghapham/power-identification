@@ -44,6 +44,7 @@ class NeuralNetwork(nn.Module):
             self, 
             input_size, 
             hidden_size = 64, 
+            n_linear_layers: int = 1,
             output_size = 1,  # binary classification only need 1 output
             positive_pred_threshold: float = 0.5,
             # class_weights: Optional[torch.Tensor] = torch.Tensor([1.0, 1.0]),
@@ -56,14 +57,27 @@ class NeuralNetwork(nn.Module):
 
         # Define the layers of the neural network
 
-        self.network = nn.Sequential(
-            nn.Dropout(dropout),
+        # self.network = nn.Sequential(
+        #     nn.Dropout(dropout),
+        #     nn.Linear(input_size, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, output_size),
+        # )
+
+        self.input_layer = nn.Sequential(
             nn.Linear(input_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, output_size),
+            nn.ReLU()
         )
+
+        self.hidden_layers = nn.ModuleList([
+                nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.Dropout(dropout), nn.ReLU()) 
+                for i in range(n_linear_layers)
+        ])
+        
+        self.output_layer = nn.Linear(hidden_size, output_size)
+
 
         if device == 'cuda':
             if torch.cuda.is_available():
@@ -87,7 +101,15 @@ class NeuralNetwork(nn.Module):
 
     def forward(self, x: torch.Tensor):
         # Define the forward pass of the neural network
-        logits = self.network(x.to(self.device)).squeeze()
+        # logits = self.network(x.to(self.device)).squeeze()
+
+        activation = self.input_layer(x.to(self.device))
+
+        for layer in self.hidden_layers:
+            activation = layer(activation)
+        
+        logits = self.output_layer(activation).squeeze()
+
         return logits
 
     def predict(self, x: torch.Tensor, positive_pred_threshold: float = None):
@@ -469,13 +491,23 @@ def evaluate(y_test, y_pred, y_prob) -> dict:
     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
     auc = roc_auc_score(y_test, y_prob)
 
-    result = {
-        "accuracy": accuracy,
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "auc": auc
-    }
+    if isinstance(accuracy, torch.Tensor):
+        result = {
+        "accuracy": accuracy.item(),
+        "precision": precision.item(),
+        "recall": recall.item(),
+        "f1": f1.item(),
+        "auc": auc.item(),
+        }    
+    else:
+
+        result = {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "auc": auc
+        }
 
     print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
     return result
