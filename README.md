@@ -1,4 +1,8 @@
-# How to run
+# Ideology and Power Identification in Parliamentary Debates 2024
+
+Link to project: https://touche.webis.de/clef24/touche24-web/ideology-and-power-identification-in-parliamentary-debates.html
+
+## How to run
 
 First, you will need to install the required packages. Run this in the command line:
 
@@ -6,7 +10,12 @@ First, you will need to install the required packages. Run this in the command l
 pip3 install -r requirements.txt
 ```
 
-# Country groups
+## Folder structure:
+- experiments-classical-ml: Contains scripts to test various classical ML models
+- experiments-llm: contains scripts to test the use of LLM in classification
+
+
+## Country groups
 
 - Balkan
   - Bosnia and Herzegovina (ba)
