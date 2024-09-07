@@ -5,3 +5,4 @@ models/*
 predictions/*
 .vscode/*
 **/__pycache__/*
+models_cache/*

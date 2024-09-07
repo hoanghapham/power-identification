@@ -11,8 +11,7 @@ pip3 install -r requirements.txt
 ```
 
 ## Folder structure:
-- experiments-classical-ml: Contains scripts to test various classical ML models
-- experiments-llm: contains scripts to test the use of LLM in classification
+(To be updted)
 
 
 ## Country groups
@@ -71,3 +70,9 @@ pip3 install -r requirements.txt
 
 - Turkic
   - Turkey (tr)
+
+
+# TODO:
+- [ ] Revamp README
+- [ ] Instruction to download & read data
+- [ ] Describing experiments
