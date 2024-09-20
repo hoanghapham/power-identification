@@ -16,6 +16,8 @@ from scipy.sparse import csr_matrix
 
 
 class PositionalEncoder(BaseEstimator, TransformerMixin):
+    """Positional encoder to encode text into positional vectors. Used for RNN models.
+    """
     def __init__(
             self, 
             vocabulary: Optional[Iterable] = None,
@@ -38,7 +40,6 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
 
     def fit(self, X: list[str], y: Optional[list] = None):
         """Learn vocabulary from provided sentences and labels
-        May need a sentence splitter?
         """
         vocabulary: set = set()
         max_sentence_length = 0
@@ -95,8 +96,6 @@ class PositionalEncoder(BaseEstimator, TransformerMixin):
 
         return tokens_sparse.to_dense()
     
-    #TODO: use spacy tokenizer
-
     def build_tokenizer(self):
         def simple_tokenizer(sentence):
             words: list = sentence.split(' ')
@@ -281,51 +280,3 @@ def encode_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectoriz
     labels = torch.tensor(raw_data.labels)
 
     return EncodedDataset(inputs, labels)
-
-
-mapping_dict = {"at": "Austria",
-"ba": "Bosnia and Herzegovina",
-"be": "Belgium",
-"bg": "Bulgaria",
-"cz": "Czechia",
-"dk": "Denmark",
-"ee": "Estonia",
-"es": "Spain",
-"es-ct": "Catalonia",
-"es-ga": "Galicia",
-"es-pv": "Basque Country",
-"fi": "Finland",
-"fr": "France",
-"gb": "Great Britain",
-"gr": "Greece",
-"hr": "Croatia",
-"hu": "Hungary",
-"is": "Iceland",
-"it": "Italy",
-"lv": "Latvia",
-"nl": "The Netherlands",
-"no": "Norway",
-"pl": "Poland",
-"pt": "Portugal",
-"rs": "Serbia",
-"se": "Sweden",
-"si": "Slovenia",
-"tr": "Turkey",
-"ua": "Ukraine"
-}
-
-
-
-def check_cuda_memory():
-    for i in range(torch.cuda.device_count()):
-        print(torch.cuda.get_device_name(i))
-        
-    total = torch.cuda.get_device_properties(0).total_memory
-    reserved = torch.cuda.memory_reserved(0)
-    allocated = torch.cuda.memory_allocated(0)
-    free = reserved - allocated
-
-    print(f"Total: {total / 1e6:,.2f} MB")
-    print(f"Reserved: {reserved / 1e6:,.2f} MB")
-    print(f"Allocated: {allocated / 1e6:,.2f} MB")
-    print(f"Free in reserved: {free / 1e6:,.2f} MB")

@@ -5,9 +5,9 @@ import torch.optim as optim
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.base import TransformerMixin
-from utils import get_data  # Assuming this imports the get_data function from some module
+from lib.data_processing import get_data  # Assuming this imports the get_data function from some module
 
-from models import NeuralNetwork
+from lib.models import NeuralNetwork
 
 # Define a pipeline class for our task
 class IdeologyPowerDetectionPipeline:

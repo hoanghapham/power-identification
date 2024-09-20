@@ -3,20 +3,19 @@ from typing import Optional
 from pathlib import Path
 
 import torch
-from torch import nn, optim
 from torch.utils.data import DataLoader
-from sklearn.metrics import cohen_kappa_score, roc_auc_score, roc_curve
+from torch import nn, optim
 from tqdm import tqdm
 
 import numpy as np
-import pandas as pd
-import altair as alt
 
-from utils import EncodedDataset, PositionalEncoder
+from lib.data_processing import PositionalEncoder
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # Check if CUDA is available
 
 class TrainConfig():
+
+    """Convenience object to store training configurations.
+    """
     def __init__(
             self, 
             num_epochs: int,
@@ -29,17 +28,10 @@ class TrainConfig():
         self.violation_limit    = violation_limit
         self.early_stop        = early_stop
 
-class SVMClassifier():
-    def __init__(self) -> None:
-        pass
-
-class SVClassifier():
-    def __init__(self) -> None:
-        pass
-
-
 
 class NeuralNetwork(nn.Module):
+    """Simple Network model built using torch's modules
+    """
     def __init__(
             self, 
             input_size, 
@@ -57,27 +49,18 @@ class NeuralNetwork(nn.Module):
 
         # Define the layers of the neural network
 
-        # self.network = nn.Sequential(
-        #     nn.Dropout(dropout),
-        #     nn.Linear(input_size, hidden_size),
-        #     nn.ReLU(),
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.ReLU(),
-        #     nn.Linear(hidden_size, output_size),
-        # )
-
         self.input_layer = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU()
         )
 
+        # Hidden layers can be dynamically generated
         self.hidden_layers = nn.ModuleList([
-                nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.Dropout(dropout), nn.ReLU()) 
-                for i in range(n_linear_layers)
+            nn.Sequential(nn.Linear(hidden_size, hidden_size), nn.Dropout(dropout), nn.ReLU()) 
+            for i in range(n_linear_layers)
         ])
         
         self.output_layer = nn.Linear(hidden_size, output_size)
-
 
         if device == 'cuda':
             if torch.cuda.is_available():
@@ -99,10 +82,19 @@ class NeuralNetwork(nn.Module):
         self.training_accuracy_: list = []
         self.training_loss_: list = []
 
-    def forward(self, x: torch.Tensor):
-        # Define the forward pass of the neural network
-        # logits = self.network(x.to(self.device)).squeeze()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the neural network. Return the logits
 
+        Parameters
+        ----------
+        x : torch.Tensor
+
+        Returns
+        -------
+        torch.Tensor
+        """
+
+        # Define the forward pass of the neural network
         activation = self.input_layer(x.to(self.device))
 
         for layer in self.hidden_layers:
@@ -112,41 +104,40 @@ class NeuralNetwork(nn.Module):
 
         return logits
 
-    def predict(self, x: torch.Tensor, positive_pred_threshold: float = None):
+    def predict(self, x: torch.Tensor, positive_pred_threshold: float = None) -> torch.Tensor:
+        """Output prediction labels (1, 0)
+
+        Parameters
+        ----------
+        x : torch.Tensor
+        positive_pred_threshold : float, optional
+            If the result of sigmoid(logits) is greater than the threshold, then the prediction is 1.
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor of labels (0, 1)
+        """
         if not positive_pred_threshold:
             positive_pred_threshold = self.positive_pred_threshold
         logits = self.forward(x.to(self.device))
-        pred = (self.sigmoid(logits) >= positive_pred_threshold).squeeze() * 1.0  # Convert to 1-0
+        pred = (self.sigmoid(logits) >= positive_pred_threshold).squeeze() * 1.0  # Convert to 1-0 labels
         return pred
-
 
     def fit(
         self,
         train_dataloader: DataLoader,
         train_config: TrainConfig,
         disable_progress_bar: bool = True
-    ):
-        """Train a neural network model
+    ) -> None:
+        """Train the model
 
         Parameters
         ----------
-        train_data : EncodedDataset
-        dev_data : EncodedDataset
-        output_size : int, optional
-            Number of classes to be predicted, by default 2
-        hidden_size : int, optional
-            Number of hidden nodes, by default 64
-        batch_size : int, optional
-            Number of samples in a data batch, by default 64
-        num_epochs : int, optional
-            Number of epochs to train, by default 20
-        train_config.violation_limit : int, optional
-            Number of epochs to wait when the loss cannot be reduced further, by default 5
-        device: str, optional
-            Can be either 'cpu' or 'cuda'. Only use `cuda` if your machine has a graphic card supporting CUDA.
-        Returns
-        -------
-        NeuralNetwork
+        train_dataloader : DataLoader
+        train_config : TrainConfig
+        disable_progress_bar : bool, optional
+            If True, disable the progress bar, by default True
         """
         best_loss = float('inf')
         violations = 0
@@ -278,13 +269,12 @@ class RNNClassifier(nn.Module):
         self.training_accuracy_ = list()
 
 
-    def forward(self, padded_sentences):
+    def forward(self, padded_sentences: torch.Tensor) -> torch.Tensor:
         """The forward pass through the network"""
         batch_size, max_sentence_length = padded_sentences.size()
         embedded_sentences = self._get_word_embedding(padded_sentences)
 
         # Prepare a PackedSequence object, and pass data through the RNN
-        # TODO: Why do we need to pack the data this way?
         sentence_lengths = (padded_sentences != self.pad_token_idx_).sum(dim=1)
         sentence_lengths = sentence_lengths.long().cpu()
 
@@ -310,21 +300,21 @@ class RNNClassifier(nn.Module):
         # Get the last token in each sentence as the output of RNN
         collapsed_output = torch.stack([reshaped[i, j-1] for i, j in enumerate(sentence_lengths)]).squeeze().to(self.device)
 
-        # sigmoid applied to convert to value between 0 - 1
-        # Use sigmoid as output for nn.CrossEntropyLoss()
-        # scores = self._sigmoid(collapsed)
-
         return collapsed_output
     
 
-    def predict(self, x: torch.Tensor):
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
         """Make predictions for the input tensor"""
         logits = self.forward(x.to(self.device))
         pred = (self._sigmoid(logits) >= 0.5).squeeze() * 1.0  # Convert to 1-0
         return pred
 
-
-    def fit(self, train_dataloader: DataLoader, train_config: TrainConfig, no_progress_bar: bool = True) -> None:
+    def fit(
+        self, 
+        train_dataloader: DataLoader,
+        train_config: TrainConfig,
+        no_progress_bar: bool = True
+    ) -> None:
         """Training loop for the RNN model. The loop will modify the model itself and returns nothing
 
         Parameters
@@ -334,10 +324,7 @@ class RNNClassifier(nn.Module):
             An object containing various configs for the training loop
         train_encoder : PositionalEncoder
             The encoder providing the vocabulary and tagset for an internal batch_encoder
-        Returns
-        -------
         """
-        # Make sure that the training process do not modify the initial model
 
         best_lost = float('inf')
         violations = 0
@@ -402,164 +389,53 @@ class RNNClassifier(nn.Module):
                             break
 
 
-def save_model(model: NeuralNetwork | RNNClassifier, base_path: str | Path, model_name: str):
-    """Save model state to disc"""
-    torch.save(model.state_dict(), f"{base_path}/{model_name}.pt")
-    np.save(f"{base_path}/{model_name}_training_accuracy_.npy", model.training_accuracy_)
-    np.save(f"{base_path}/{model_name}_training_loss_.npy", model.training_loss_)
+def save_model(model: NeuralNetwork | RNNClassifier, model_dir: str | Path, model_name: str) -> None:
+    """Save model state to local storage. 
 
-
-def load_model(model: NeuralNetwork | RNNClassifier, base_path: str | Path, model_name: str):
-    """Pass in an initiated model and load the saved state"""
-    model.load_state_dict(torch.load(f"{base_path}/{model_name}.pt"))
-    model.training_accuracy_ = np.load(f"{base_path}/{model_name}_training_accuracy_.npy")
-    model.training_loss_ = np.load(f"{base_path}/{model_name}_training_loss_.npy")
-    return model
-
-
-
-def plot_results(model: NeuralNetwork | RNNClassifier, train_config: TrainConfig, train_dataloader: DataLoader):
-    # Plot training accuracy and loss side-by-side
-    epochs_arr = []
-    for epoch in range(1, train_config.num_epochs + 1):
-        epochs_arr += [epoch] * len(train_dataloader)
-
-    result_df = pd.DataFrame({
-        'training_acc': model.training_accuracy_,
-        'training_loss': model.training_loss_,
-        'iteration': range(1, len(model.training_accuracy_) + 1),
-        'epoch': epochs_arr
-    })
-
-    nn_training_accuracy_chart = alt.Chart(result_df).mark_line().encode(
-        x = alt.X("iteration:N", axis = alt.Axis(title = 'Iteration', values=list(range(0, len(model.training_accuracy_), 100)), labelAngle=-30)),
-        y = alt.Y("training_acc:Q", axis = alt.Axis(title = 'Accuracy')),
-        color = alt.Color("epoch:N", scale=alt.Scale(scheme='category20'), title='Epoch'),
-    ).properties(
-        width=600,
-        height=400,
-        title = 'Training Accuracy'
-    )
-
-    nn_training_loss_chart = alt.Chart(result_df).mark_line().encode(
-        x = alt.X("iteration:N", axis = alt.Axis(title = 'Iteration', values=list(range(0, len(model.training_accuracy_), 100)), labelAngle=-30)),
-        y = alt.Y("training_loss:Q", axis = alt.Axis(title = 'Loss')),
-        color = alt.Color("epoch:N", scale=alt.Scale(scheme='category20'), title='Epoch'),
-    ).properties(
-        width=600,
-        height=400,
-        title = 'Training Loss'
-    )
-
-    (nn_training_accuracy_chart | nn_training_loss_chart).properties(
-        title = 'Base Neural Network with Tf-Idf vectors'
-    ).show()
-    
-
-# def evaluate_nn_model(y_pred, y_test, test_dataset: EncodedDataset):
-#     with torch.no_grad():
-#         # X_test = torch.stack([dta[0] for dta in test_dataset])
-#         X_test = torch.stack([test[0] for test in test_dataset]).to(model.device)
-#         y_test = torch.stack([test[1] for test in test_dataset]).to(model.device)
-#         y_pred = model.predict(X_test)
-
-#         true_pos = sum([pred == y == 1 for pred, y in zip(y_pred, y_test)])
-#         true_neg = sum([pred == y == 0 for pred, y in zip(y_pred, y_test)])
-#         false_pos = sum([(pred == 1) * (y == 0) for pred, y in zip(y_pred, y_test)])
-#         false_neg = sum([(pred == 0) * (y == 1) for pred, y in zip(y_pred, y_test)])
-#         total = len(y_test)
-    
-#     precision = (true_pos + true_neg) / total
-#     recall = true_pos / (true_pos + false_neg)
-#     f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
-#     kappa = cohen_kappa_score(y_pred.cpu(), y_test.cpu(), labels=[0, 1], weights='linear')
-
-#     return precision.item(), recall.item(), f1.item(), kappa
-
-
-def evaluate(y_test, y_pred, y_prob) -> dict:
-    
-    true_pos = sum([pred == y == 1 for pred, y in zip(y_pred, y_test)])
-    true_neg = sum([pred == y == 0 for pred, y in zip(y_pred, y_test)])
-    false_pos = sum([(pred == 1) * (y == 0) for pred, y in zip(y_pred, y_test)])
-    false_neg = sum([(pred == 0) * (y == 1) for pred, y in zip(y_pred, y_test)])
-    total = len(y_test)
-
-    accuracy = (true_pos + true_neg) / total
-    precision = true_pos / (true_pos + false_pos)
-    recall = true_pos / (true_pos + false_neg)
-    f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
-    auc = roc_auc_score(y_test, y_prob)
-
-    if isinstance(accuracy, torch.Tensor):
-        result = {
-        "accuracy": accuracy.item(),
-        "precision": precision.item(),
-        "recall": recall.item(),
-        "f1": f1.item(),
-        "auc": auc.item(),
-        }    
-    else:
-
-        result = {
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "auc": auc
-        }
-
-    print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
-    return result
-
-
-
-def evaluate_rnn_model(
-        model: nn.Module | RNNClassifier,
-        test_dataloader,
-        train_encoder
-    ) -> float:
-    """Evaluate the model on an inputs-targets set, using accuracy metric.
+    The function will create three files:
+    - model_name.pt
+    - model_name_training_accuracy.npy
+    - model_name_training_loss.npy
 
     Parameters
     ----------
-    model : nn.Module
-        Should be one of the two custom RNN taggers we defined.
-    inputs : torch.Tensor
-    targets : torch.Tensor
-    pad_tag_idx : int
-        Index of the <PAD> tag in the tagset to be ignored when calculating accuracy
+    model : NeuralNetwork | RNNClassifier
+    model_dir : str | Path
+        Path to the directory to save the model
+    model_name : str
+        Name of the model, without any extension.
+    """
+    torch.save(model.state_dict(), f"{model_dir}/{model_name}.pt")
+    np.save(f"{model_dir}/{model_name}_training_accuracy.npy", model.training_accuracy_)
+    np.save(f"{model_dir}/{model_name}_training_loss.npy", model.training_loss_)
+
+
+def load_model(model: NeuralNetwork | RNNClassifier, model_dir: str | Path, model_name: str) -> NeuralNetwork | RNNClassifier:
+    """Pass in an initiated model and load the saved state
+
+    The function will load the following files:
+    - model_name.pt
+    - model_name_training_accuracy.npy
+    - model_name_training_loss.npy
+
+    The model is loaded as an instance of NeuralNetwork or RNNClassifier.
+    The training accuracy and training loss values are assigned to the model's attributes
+
+    Parameters
+    ----------
+    model : NeuralNetwork | RNNClassifier
+    model_dir : str | Path
+        Path to the directory where the model was saved
+    model_name : str
+        Name of the model to load, without extension
 
     Returns
     -------
-    float
-        Accuracy metric (ignored the <PAD> tag)
+    NeuralNetwork | RNNClassifier
     """
-    true_pos = 0
-    true_neg = 0
-    false_pos = 0
-    false_neg = 0
-    total = 0
+    model.load_state_dict(torch.load(f"{model_dir}/{model_name}.pt"))
+    model.training_accuracy_ = np.load(f"{model_dir}/{model_name}_training_accuracy.npy")
+    model.training_loss_ = np.load(f"{model_dir}/{model_name}_training_loss.npy")
+    return model
 
-    with torch.no_grad():
 
-        for ids, speakers, raw_inputs, raw_targets in tqdm(test_dataloader, unit="batch", desc="Predicting"):
-
-            batch_encoder = PositionalEncoder(vocabulary=train_encoder.vocabulary)
-            inputs = batch_encoder.fit_transform(raw_inputs)
-            targets = torch.as_tensor(raw_targets, dtype=torch.float).to(model.device)  # nn.CrossEntropyLoss() require target to be float
-
-            # Make prediction
-            pred = model.predict(inputs.to(model.device))
-            true_pos += sum([pred == y == 1 for pred, y in zip(pred, targets)])
-            true_neg += sum([pred == y == 0 for pred, y in zip(pred, targets)])
-            false_pos += sum([(pred == 1) * (y == 0) for pred, y in zip(pred, targets)])
-            false_neg += sum([(pred == 0) * (y == 1) for pred, y in zip(pred, targets)])
-            total += len(targets)
-        
-        accuracy = (true_pos + true_neg) / total
-        precision = true_pos / (true_pos + false_pos)
-        recall = true_pos / (true_pos + false_neg)
-        f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
-
-    return  accuracy.item(), precision.item(), recall.item(), f1.item()
