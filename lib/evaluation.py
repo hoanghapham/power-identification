@@ -8,8 +8,8 @@ from torch import nn
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
-from models import RNNClassifier, NeuralNetwork, TrainConfig
-from data_processing import PositionalEncoder
+from .models import RNNClassifier, NeuralNetwork, TrainConfig
+from .data_processing import PositionalEncoder
 
 def plot_results(
         title: str, 
@@ -61,8 +61,8 @@ def plot_results(
     (training_accuracy_chart | training_loss_chart).properties(title = title).show()
     
 
-def evaluate_classic_models(y_test: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> dict:
-    """Conveninece function to evaluate predction of classical ML models.
+def evaluate(y_test: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> dict:
+    """Conveninece function to evaluate predction of models.
 
     The function returns a dictionary of metrics:
     - Accuracy

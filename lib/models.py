@@ -3,6 +3,7 @@ from typing import Optional
 from pathlib import Path
 
 import torch
+from torch.utils.data import DataLoader
 from torch import nn, optim
 from tqdm import tqdm
 
