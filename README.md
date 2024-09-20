@@ -1,6 +1,11 @@
 # Ideology and Power Identification in Parliamentary Debates 2024
 
-Link to project: https://touche.webis.de/clef24/touche24-web/ideology-and-power-identification-in-parliamentary-debates.html
+This is a binary classification task, based on a speech of a speaker, to determine their belonging to coalition or opposition in the government.
+[Link](https://touche.webis.de/clef24/touche24-web/ideology-and-power-identification-in-parliamentary-debates.html) to project.
+Used approaches:
+* traditional ML;
+* pretrained embeddings;
+* instructed-tuned LLM.
 
 ## How to run
 
@@ -70,9 +75,3 @@ pip3 install -r requirements.txt
 
 - Turkic
   - Turkey (tr)
-
-
-# TODO:
-- [ ] Revamp README
-- [ ] Instruction to download & read data
-- [ ] Describing experiments
