@@ -194,32 +194,28 @@ class EncodedDataset(Dataset):
             yield data
 
 
-def load_data(folder_path: str | Path, file_list: list, text_head: str = 'text') -> RawDataset:
+def load_data(file_path_list: list[Path | str], text_head: str = 'text') -> RawDataset:
     """Load the Parliament Debate dataset. 
 
     Parameters
     ----------
-    folder_path : str | Path
-        Parent folder containing the text files
-    file_list : list
-        List of files you want to load
+    file_path_list : list
+        List of path to the files you want to load
     text_head : str, optional
         Name of the text column, either 'text' or 'text_en', by default 'text'
 
     Returns
     -------
-    list[tuple]
-        Returns a list of tuples containing: text ID, speaker ID, text, label
+    RawDataset
+        Returns a RawDataset object containing: text ID, speaker ID, text, label
     """
-    if isinstance(folder_path, str):
-        folder_path = Path(folder_path)
 
-    data = RawDataset([], [], [], [])
-    
-    for fname in file_list:
-        # print(f"Load {fname}...")
-        tmp_data = _load_one(file_path=folder_path / fname, text_head=text_head)
-
+    for file_path in file_path_list:
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+            
+        data = RawDataset([], [], [], [])
+        tmp_data = _load_one(file_path=file_path, text_head=text_head)
         data += tmp_data
 
     return data
@@ -254,12 +250,14 @@ def split_data(data: RawDataset, test_size=0.2, random_state=None) -> tuple[RawD
         speaker_indices[speaker].append(idx)
 
     # Split list of (indices list)
+    # speaker_indices.values() = list of list of indices
     train_indices_lst, test_indices_lst = train_test_split(
         list(speaker_indices.values()), 
         test_size=test_size, 
         random_state=random_state
     )
 
+    # Flatten the list of list of indices
     train_indices = [idx for lst in train_indices_lst for idx in lst]
     test_indices = [idx for lst in test_indices_lst for idx in lst]
     
