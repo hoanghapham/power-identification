@@ -12,8 +12,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
+import numpy as np
 from scipy.sparse import csr_matrix
 
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 class PositionalEncoder(BaseEstimator, TransformerMixin):
     """Positional encoder to encode text into positional vectors. Used for RNN models.
@@ -280,3 +282,27 @@ def encode_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectoriz
     labels = torch.tensor(raw_data.labels)
 
     return EncodedDataset(inputs, labels)
+
+class VaderSentimentEncoder:
+    def __init__(self, dimensions=4):
+        """Initialize the encoder with the desired number of dimensions."""
+        self.analyzer = SentimentIntensityAnalyzer()
+        self.dimensions = dimensions  # Set the number of dimensions
+
+    def transform(self, texts):
+        sentiments = []
+        for text in texts:
+            sentiment_scores = self.analyzer.polarity_scores(text)
+            if self.dimensions == 1:
+                sentiments.append([sentiment_scores['compound']])  # 1D: [compound] (A single overall sentiment score from -1 to 1)
+            elif self.dimensions == 2:
+                sentiments.append([sentiment_scores['pos'], sentiment_scores['neg']])  # 2D: [pos, neg] (Proportion of positive and negative words)
+            elif self.dimensions == 3:
+                sentiments.append([sentiment_scores['pos'], sentiment_scores['neg'], sentiment_scores['neu']])  # 3D: [pos, neg, neu]
+            elif self.dimensions == 4:
+                sentiments.append([sentiment_scores['compound'], sentiment_scores['pos'], sentiment_scores['neg'], sentiment_scores['neu']])  # 4D: [compound, pos, neg, neu]
+            else:
+                raise ValueError("Unsupported number of dimensions. Choose between 1 and 4.")
+        # Convert to a sparse matrix (csr_matrix) to work with encode_data
+        return csr_matrix(sentiments)
+    
