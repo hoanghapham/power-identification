@@ -1,8 +1,15 @@
+# Files
 .python-version
-.DS_Store
+**/.DS_Store
+.env
+
+# Folders
+.vscode/*
 data/*
 models/*
 predictions/*
-.vscode/*
-**/__pycache__/*
 models_cache/*
+**/__pycache__/*
+**/.ipynb_checkpoints/*
+archived/*
+report/*
