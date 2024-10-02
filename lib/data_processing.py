@@ -6,16 +6,19 @@ from pathlib import Path
 
 import csv
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from tqdm import tqdm
 
 import numpy as np
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import gensim
+import gensim.downloader as api
+from nltk.tokenize import word_tokenize
+from transformers import DistilBertTokenizer, DistilBertModel  
 
 class PositionalEncoder(BaseEstimator, TransformerMixin):
     """Positional encoder to encode text into positional vectors. Used for RNN models.
@@ -281,51 +284,112 @@ def encode_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectoriz
 
     return EncodedDataset(inputs, labels)
 
-class VaderSentimentEncoder:
-    def __init__(self, dimensions=4):
-        """Initialize the encoder with the desired number of dimensions."""
-        self.analyzer = SentimentIntensityAnalyzer()
-        self.dimensions = dimensions  # Set the number of dimensions
+def create_dataloader(X_embedded, y, batch_size=32, shuffle=False):
+    # Check if the input is a sparse matrix and convert it to dense if needed
+    if issparse(X_embedded):
+        X_embedded = X_embedded.toarray()
 
-    def transform(self, texts):
-        sentiments = []
-        for text in texts:
-            sentiment_scores = self.analyzer.polarity_scores(text)
-            if self.dimensions == 1:
-                sentiments.append([sentiment_scores['compound']])  # 1D: [compound] (A single overall sentiment score from -1 to 1)
-            elif self.dimensions == 2:
-                sentiments.append([sentiment_scores['pos'], sentiment_scores['neg']])  # 2D: [pos, neg] (Proportion of positive and negative words)
-            elif self.dimensions == 3:
-                sentiments.append([sentiment_scores['pos'], sentiment_scores['neg'], sentiment_scores['neu']])  # 3D: [pos, neg, neu]
-            elif self.dimensions == 4:
-                sentiments.append([sentiment_scores['compound'], sentiment_scores['pos'], sentiment_scores['neg'], sentiment_scores['neu']])  # 4D: [compound, pos, neg, neu]
-            else:
-                raise ValueError("Unsupported number of dimensions. Choose between 1 and 4.")
-        # Convert to a sparse matrix (csr_matrix) to work with encode_data
-        return csr_matrix(sentiments)
+    # Convert to PyTorch tensors
+    X_tensor = torch.tensor(X_embedded, dtype=torch.float32)
+    y_tensor = torch.tensor(np.array(y), dtype=torch.long)
     
-def load_glove_embeddings(glove_file_path):
-    """Loads GloVe embeddings from a file and returns them as a dictionary."""
-    embeddings_index = {}
-    with open(glove_file_path, 'r', encoding='utf8') as f:
-        for line in f:
-            values = line.split()
-            word = values[0]
-            embedding = np.asarray(values[1:], dtype='float32')
-            embeddings_index[word] = embedding
-    return embeddings_index
+    # Create dataset and dataloader
+    dataset = TensorDataset(X_tensor, y_tensor)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    
+    return dataloader
 
-def encode_with_glove(texts, embeddings_index, embedding_dim):
-    """Encodes the given texts using GloVe embeddings by averaging word vectors."""
-    encoded_texts = []
+def get_embeddings(method, X_train, X_test, max_features=None):
+    if method == 'Binary_BoW' or method == 'TF-IDF':
+        vectorizer = CountVectorizer(binary=True, max_features=max_features) if method == 'Binary_BoW' else TfidfVectorizer(max_features=max_features)
+        X_train_embedded = vectorizer.fit_transform(X_train)
+        X_test_embedded = vectorizer.transform(X_test)
+        return X_train_embedded, X_test_embedded
+
+    elif method == 'Word2Vec':
+        # Ensure X_train, X_test are lists of tokenized sentences
+        X_train_tokenized = [word_tokenize(sentence.lower()) for sentence in X_train]
+        X_test_tokenized = [word_tokenize(sentence.lower()) for sentence in X_test]
+        
+        # Load Word2Vec embeddings using Gensim
+        model = gensim.models.Word2Vec(sentences=X_train_tokenized, vector_size=max_features, window=5, min_count=1)
+        X_train_embedded = np.array([
+            np.mean([model.wv[word] for word in sentence if word in model.wv] or [np.zeros(max_features)], axis=0) 
+            for sentence in X_train_tokenized
+        ])
+        X_test_embedded = np.array([
+            np.mean([model.wv[word] for word in sentence if word in model.wv] or [np.zeros(max_features)], axis=0) 
+            for sentence in X_test_tokenized
+        ])
+        return X_train_embedded, X_test_embedded
+
+    elif method == 'GloVe':
+        # Ensure X_train, X_text are lists of tokenized sentences
+        X_train_tokenized = [word_tokenize(sentence.lower()) for sentence in X_train]
+        X_test_tokenized = [word_tokenize(sentence.lower()) for sentence in X_test]
+
+        # Load GloVe embeddings using Gensim
+        glove_embeddings = load_glove_embeddings_from_gensim(max_features)
+        vocab = {word: i for i, word in enumerate(set(word for sentence in X_train_tokenized for word in sentence))}
+        embedding_dim = len(next(iter(glove_embeddings.values())))  # Dimension of the GloVe embeddings
+        embedding_matrix = get_glove_embedding_matrix(vocab, glove_embeddings, embedding_dim)
+        
+        X_train_embedded = np.array([
+            np.mean([embedding_matrix[vocab[word]] for word in sentence if word in vocab] or [np.zeros(embedding_dim)], axis=0) 
+            for sentence in X_train_tokenized
+        ])
+        X_test_embedded = np.array([
+            np.mean([embedding_matrix[vocab[word]] for word in sentence if word in vocab] or [np.zeros(embedding_dim)], axis=0) 
+            for sentence in X_test_tokenized
+        ])
+        return X_train_embedded, X_test_embedded
+
+    elif method == 'DistilBERT':
+        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+        X_train_embedded = generate_transformer_embeddings(tokenizer, model, X_train)
+        X_test_embedded = generate_transformer_embeddings(tokenizer, model, X_test)
+        return X_train_embedded, X_test_embedded
+
+    else:
+        raise ValueError(f"Unsupported embedding method: {method}")
+
+def load_glove_embeddings_from_gensim(max_features=None):
+    # Load pre-trained GloVe embeddings directly from Gensim
+    glove_model = api.load("glove-wiki-gigaword-300")  # This loads GloVe with 300d vectors
+    
+    # Limit to max_features
+    glove_embeddings = {}
+    for i, word in enumerate(glove_model.key_to_index):
+        if max_features and i >= max_features:
+            break
+        glove_embeddings[word] = glove_model[word]
+    
+    return glove_embeddings
+
+def get_glove_embedding_matrix(vocab, glove_embeddings, embedding_dim):
+    embedding_matrix = np.zeros((len(vocab), embedding_dim))
+    for word, idx in vocab.items():
+        embedding_vector = glove_embeddings.get(word)
+        if embedding_vector is not None:
+            embedding_matrix[idx] = embedding_vector
+    return embedding_matrix
+
+def generate_transformer_embeddings(tokenizer, model, texts, max_length=128):
+    model.eval()  # Set model to evaluation mode
+    embeddings = []
+    
     for text in texts:
-        words = text.split()
-        word_vectors = [embeddings_index[word] for word in words if word in embeddings_index]
-        if word_vectors:
-            # Average the vectors for the words in the text
-            avg_vector = np.mean(word_vectors, axis=0)
-        else:
-            # If no words in the text are in the embeddings, use a zero vector
-            avg_vector = np.zeros(embedding_dim)
-        encoded_texts.append(avg_vector)
-    return np.array(encoded_texts)
+        # Tokenize the text
+        encoded_input = tokenizer(text, padding='max_length', truncation=True, max_length=max_length, return_tensors="pt")
+        
+        # Forward pass to get hidden states
+        with torch.no_grad():
+            output = model(**encoded_input)
+        
+        # Use the embeddings from the last hidden state
+        hidden_states = output.last_hidden_state
+        sentence_embedding = torch.mean(hidden_states, dim=1).squeeze().numpy()
+        embeddings.append(sentence_embedding)
+    
+    return np.array(embeddings)
