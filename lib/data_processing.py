@@ -304,3 +304,28 @@ class VaderSentimentEncoder:
         # Convert to a sparse matrix (csr_matrix) to work with encode_data
         return csr_matrix(sentiments)
     
+def load_glove_embeddings(glove_file_path):
+    """Loads GloVe embeddings from a file and returns them as a dictionary."""
+    embeddings_index = {}
+    with open(glove_file_path, 'r', encoding='utf8') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            embedding = np.asarray(values[1:], dtype='float32')
+            embeddings_index[word] = embedding
+    return embeddings_index
+
+def encode_with_glove(texts, embeddings_index, embedding_dim):
+    """Encodes the given texts using GloVe embeddings by averaging word vectors."""
+    encoded_texts = []
+    for text in texts:
+        words = text.split()
+        word_vectors = [embeddings_index[word] for word in words if word in embeddings_index]
+        if word_vectors:
+            # Average the vectors for the words in the text
+            avg_vector = np.mean(word_vectors, axis=0)
+        else:
+            # If no words in the text are in the embeddings, use a zero vector
+            avg_vector = np.zeros(embedding_dim)
+        encoded_texts.append(avg_vector)
+    return np.array(encoded_texts)
