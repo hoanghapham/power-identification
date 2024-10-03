@@ -10,8 +10,8 @@
 #SBATCH -e word_embeddings.err
 #SBATCH --gres=gpu:1
 
-conda activate /proj/uppmax2020-2-2/hapham/envs/power-identification
-cd /proj/uppmax2020-2-2/hapham/power-identification
+conda activate /proj/uppmax2024-2-13/hapham/envs/power-identification
+cd /proj/uppmax2024-2-13/hapham/power-identification
 
 
 # Change path to python script
