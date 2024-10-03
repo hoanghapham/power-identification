@@ -345,10 +345,11 @@ def get_embeddings(method, X_train, X_test, max_features=None):
         return X_train_embedded, X_test_embedded
 
     elif method == 'DistilBERT':
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
         model = DistilBertModel.from_pretrained('distilbert-base-uncased')
-        X_train_embedded = generate_transformer_embeddings(tokenizer, model, X_train)
-        X_test_embedded = generate_transformer_embeddings(tokenizer, model, X_test)
+        X_train_embedded = generate_transformer_embeddings(tokenizer, model, X_train, max_length=max_features, device=device)
+        X_test_embedded = generate_transformer_embeddings(tokenizer, model, X_test, max_length=max_features, device=device)
         return X_train_embedded, X_test_embedded
 
     else:
@@ -375,13 +376,14 @@ def get_glove_embedding_matrix(vocab, glove_embeddings, embedding_dim):
             embedding_matrix[idx] = embedding_vector
     return embedding_matrix
 
-def generate_transformer_embeddings(tokenizer, model, texts, max_length=128):
+def generate_transformer_embeddings(tokenizer, model, texts, max_length=128, device="cpu"):
+    model = model.to(device)  # Move the model to the specified device (GPU or CPU)
     model.eval()  # Set model to evaluation mode
     embeddings = []
     
     for text in texts:
         # Tokenize the text
-        encoded_input = tokenizer(text, padding='max_length', truncation=True, max_length=max_length, return_tensors="pt")
+        encoded_input = tokenizer(text, padding='max_length', truncation=True, max_length=max_length, return_tensors="pt").to(device)  # Move input to device
         
         # Forward pass to get hidden states
         with torch.no_grad():
@@ -389,7 +391,8 @@ def generate_transformer_embeddings(tokenizer, model, texts, max_length=128):
         
         # Use the embeddings from the last hidden state
         hidden_states = output.last_hidden_state
-        sentence_embedding = torch.mean(hidden_states, dim=1).squeeze().numpy()
+        sentence_embedding = torch.mean(hidden_states, dim=1).squeeze().cpu().numpy()  # Move result back to CPU if necessary
         embeddings.append(sentence_embedding)
     
     return np.array(embeddings)
+

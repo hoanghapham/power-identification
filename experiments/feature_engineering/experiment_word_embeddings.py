@@ -32,6 +32,8 @@ from lib.data_processing import load_data, split_data, get_embeddings, create_da
 from lib.evaluation import evaluate
 from lib.logger import CustomLogger
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 RESULTS_DIR = PROJECT_DIR / "results"
 if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -58,7 +60,7 @@ train_config = TrainConfig(num_epochs=10,early_stop=False,violation_limit=5)
 
 # Train and evaluate models
 def train_and_evaluate(embedding_method, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test,
-                       max_features=None, train_config=train_config, n_splits=5):
+                       max_features=None, train_config=train_config, n_splits=5, device=device):
     # Generate embeddings for the train and test sets
     logger.info(f"Generating {embedding_method} embeddings with max features {max_features}")
     X_train_embedded, X_test_embedded = get_embeddings(embedding_method, X_train, X_test, max_features=max_features)
@@ -76,9 +78,11 @@ def train_and_evaluate(embedding_method, X_train=X_train, y_train=y_train, X_tes
         y_train_fold, y_val_fold = y_train[train_index], y_train[val_index]
 
         # Create and train the model
-        model_nn = NeuralNetwork(input_size=X_train_embedded.shape[1], hidden_size=128)
+        print(device)
+        model_nn = NeuralNetwork(input_size=X_train_embedded.shape[1], hidden_size=128, device=device)
         train_dataloader = create_dataloader(X_train_fold, y_train_fold, batch_size=32, shuffle=True)
         
+        # Training loop, ensuring data and labels are moved to the correct device
         logger.info(f"Fitting feed-forward neural network model with {embedding_method} embeddings")
         model_nn.fit(train_dataloader, train_config, disable_progress_bar=False)
         
@@ -109,7 +113,7 @@ def train_and_evaluate(embedding_method, X_train=X_train, y_train=y_train, X_tes
 
     # Create and train the final model on the full training set
     logger.info(f"Fitting feed-forward neural network model with {embedding_method} embeddings on the entire training set")
-    model_nn = NeuralNetwork(input_size=X_train_embedded.shape[1], hidden_size=128)
+    model_nn = NeuralNetwork(input_size=X_train_embedded.shape[1], hidden_size=128, device=device)
     model_nn.fit(train_dataloader, train_config, disable_progress_bar=False)
     
     # Test and evaluate on the test set
