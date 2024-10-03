@@ -1,5 +1,5 @@
 
-## Experiment: Classical models vs. Neural Networks on GB dataset
+## result: Classical models vs. Neural Networks on GB dataset
 # 
 # We will compare the following models:
 # - XGBoost Words, chars
@@ -22,9 +22,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import xgboost as xgb
 import pandas as pd
 
-from lib.data_processing import load_data, split_data
+from sklearn.model_selection import KFold
+
+from lib.data_processing import load_data, split_data, RawDataset
 from lib.evaluation import evaluate
 from lib.logger import CustomLogger
+from lib.utils import write_ndjson_file
 
 
 RESULTS_DIR = PROJECT_DIR / "results"
@@ -32,8 +35,75 @@ if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Set up logger
-logger = CustomLogger("experiment_gb_xgboost", log_to_local=False)
+logger = CustomLogger("result_gb_xgboost", log_to_local=False)
 
+# Helper functions
+def get_average_metrics(result_list: list[dict]) -> dict:
+    accuracy = np.mean([[result['accuracy'] for result in result_list]])
+    precision = np.mean([[result['precision'] for result in result_list]])
+    recall = np.mean([[result['recall'] for result in result_list]])
+    f1 = np.mean([[result['f1'] for result in result_list]])
+    auc = np.mean([[result['auc'] for result in result_list]])
+    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1, "auc": auc}
+
+def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str):
+    result_list = []
+    kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        logger.info(f"CV fold {fold_idx}")
+
+        # Prepare encoders
+        if feature_type == "word": 
+            encoder = TfidfVectorizer(max_features=50000)
+        elif feature_type == "char":
+            encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
+        else:
+            raise ValueError(f"Not supported feature type: {feature_type}")
+        
+        encoder.fit(data.subset(train_idx).texts)
+
+        X_train = encoder.transform(data.subset(train_idx).texts)
+        X_test = encoder.transform(data.subset(test_idx).texts)
+        label_train = data.subset(train_idx).labels
+        label_test = data.subset(test_idx).labels
+
+        train_dmat = xgb.DMatrix(X_train, pd.array(label_train).astype("category"))
+        test_dmat = xgb.DMatrix(X_test, pd.array(label_test).astype("category"))
+
+        params = {
+            "booster": "gbtree",
+            "objective": "binary:logistic",  # there is also binary:hinge but hinge does not output probability
+            "tree_method": "hist",  # default to hist
+            "device": "cuda",
+
+            # Params for tree booster
+            "eta": 0.3,
+            "gamma": 0.0,  # Min loss achieved to split the tree
+            "max_depth": 6,
+            "reg_alpha": 0,
+            "reg_lambda": 1,
+        }
+
+        ITERATIONS = 2000
+
+        evals_words = [(train_dmat, "train")]
+
+        model = xgb.train(
+            params = params,
+            dtrain = train_dmat_words,
+            num_boost_round = ITERATIONS,
+            evals = evals_words,
+            verbose_eval = False
+        )
+
+        probs = model.predict(test_dmat)
+        result = evaluate(label_test, probs > 0.5, probs)
+
+        # Fit model
+        result_list.append({"fold": str(fold_idx), **result})
+
+    return model, result_list
 
 ## Load data
 logger.info(f"Load file: power-gb-train.tsv")
@@ -41,113 +111,44 @@ data = load_data(file_path_list=[PROJECT_DIR / "data/train/power/power-gb-train.
 train_raw, test_raw = split_data(data, test_size=0.2, random_state=0)
 logger.info(f"Data size: {len(data)}, % positive class: {sum(data.labels) / len(data) * 100:.2f}%")
 
-## Prepare feature encoders
+NFOLDS = 5
 
-logger.info("Prepare words_encoder")
-words_encoder = TfidfVectorizer(max_features=50000)
-words_encoder.fit(train_raw.texts)
+#%%
+## Word feature
+logger.info("Fit XGBoost model, word feature")
 
-logger.info("Prepare chars_encoder")
-chars_encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
-chars_encoder.fit(train_raw.texts)
+# Train, test, evalute
+model_XGBoost_word, result_XGBoost_word = train_evaluate_xgboost(data, NFOLDS, "word")
+avg_XGBoost_word = get_average_metrics(result_XGBoost_word)
+result_XGBoost_word.append({"fold": "average", **avg_XGBoost_word})
 
-# %%
-# Prepare train & test set
-X_train_skl_words = words_encoder.transform(train_raw.texts)
-X_test_skl_words = words_encoder.transform(test_raw.texts)
+logger.info([f"{key}: {value:.3f}" for key, value in avg_XGBoost_word.items()])
+write_ndjson_file(result_XGBoost_word, RESULTS_DIR / "results_XGBoost_word.json")
 
-X_train_skl_chars = chars_encoder.transform(train_raw.texts)
-X_test_skl_chars = chars_encoder.transform(test_raw.texts)
+#%%
+## char feature
 
-# 
+logger.info("Fit XGBoost model, char feature")
 
-# %%
+# Train, test, evalute
+model_XGBoost_char, result_XGBoost_char = train_evaluate_xgboost(data, NFOLDS, "char")
+avg_XGBoost_char = get_average_metrics(result_XGBoost_char)
+result_XGBoost_char.append({"fold": "average", **avg_XGBoost_char})
 
-# Prepare data for xgboost
-train_dmat_words = xgb.DMatrix(X_train_skl_words, pd.array(train_raw.labels).astype("category"))
-test_dmat_words = xgb.DMatrix(X_test_skl_words, pd.array(test_raw.labels).astype("category"))
-
-train_dmat_chars = xgb.DMatrix(X_train_skl_chars, pd.array(train_raw.labels).astype("category"))
-test_dmat_chars = xgb.DMatrix(X_test_skl_chars, pd.array(test_raw.labels).astype("category"))
+logger.info([f"{key}: {value:.3f}" for key, value in avg_XGBoost_char.items()])
+write_ndjson_file(result_XGBoost_char, RESULTS_DIR / "results_XGBoost_char.json")
 
 
-# %%
-# Config for Xgboost
-params = {
-    "booster": "gbtree",
-    "objective": "binary:logistic",  # there is also binary:hinge but hinge does not output probability
-    "tree_method": "hist",  # default to hist
-    "device": "cuda",
-
-    # Params for tree booster
-    "eta": 0.3,
-    "gamma": 0.0,  # Min loss achieved to split the tree
-    "max_depth": 6,
-    "reg_alpha": 0,
-    "reg_lambda": 1,
-
-}
-
-ITERATIONS = 2000
-
-
-#### Word features
-evals_words = [(train_dmat_words, "train")]
-
-model_xgb_words = xgb.train(
-    params = params,
-    dtrain = train_dmat_words,
-    num_boost_round = ITERATIONS,
-    evals = evals_words,
-    verbose_eval = 100
-)
-
-pred_xgb_words_probs = model_xgb_words.predict(test_dmat_words)
-result_xgb_words = evaluate(test_raw.labels, pred_xgb_words_probs > 0.5, pred_xgb_words_probs)
-
-#### Char features
-
-# %%
-# Can use only half of the original max features
-xgb_chars_encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
-xgb_chars_encoder.fit(train_raw.texts)
-
-# Prepare train & test set
-X_train_xgb_chars = xgb_chars_encoder.transform(train_raw.texts)
-X_test_xgb_chars = xgb_chars_encoder.transform(test_raw.texts)
-
-import xgboost as xgb
-
-train_dmat_chars = xgb.DMatrix(X_train_xgb_chars, pd.array(train_raw.labels).astype("category"))
-test_dmat_chars = xgb.DMatrix(X_test_xgb_chars, pd.array(test_raw.labels).astype("category"))
-
-evals_chars = [(train_dmat_chars, "train")]
-ITERATIONS = 2000
-
-model_xgb_chars = xgb.train(
-    params = params,
-    dtrain = train_dmat_chars,
-    num_boost_round = ITERATIONS,
-    evals = evals_chars,
-    verbose_eval = 100
-)
-
-pred_xgb_chars_probs = model_xgb_chars.predict(test_dmat_chars)
-result_xgb_chars = evaluate(test_raw.labels, pred_xgb_chars_probs > 0.5, pred_xgb_chars_probs)
 
 # Write results
 logger.info("Write result")
-results_dict = {
-    "XGBoost_words": result_xgb_words,
-    "XGBoost_chars": result_xgb_chars
-}
+results_aggr = [
+    {"model": "XGBoost_word", **result_XGBoost_word},
+    {"model": "XGBoost_char", **result_XGBoost_char}
+]
 
-with open(RESULTS_DIR / "experiment_gb_xgboost.json", "w") as f:
-    json.dump(results_dict, f)
+write_ndjson_file(results_aggr, RESULTS_DIR / "result_gb_xgboost.json")
 
-results_df = pd.DataFrame.from_dict(results_dict, orient="index")\
-    .reset_index().rename(columns={"index": "model"})
-
-results_df.to_csv(RESULTS_DIR / "experiment_gb_xgboost.csv", index=False)
-
-results_df.to_latex(RESULTS_DIR / "experiment_gb_xgboost.tex", index=False)
+results_df = pd.DataFrame(data=results_aggr)
+results_df.to_csv(RESULTS_DIR / "result_gb_xgboost.csv", index=False)
+results_df.to_latex(RESULTS_DIR / "result_gb_xgboost.tex", index=False)
