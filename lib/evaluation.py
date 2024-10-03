@@ -115,7 +115,7 @@ def evaluate(y_test: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> dict
             "auc": auc
         }
 
-    print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
+    # print(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
     return result
 
 
