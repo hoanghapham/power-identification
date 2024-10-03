@@ -13,3 +13,4 @@ models_cache/*
 **/.ipynb_checkpoints/*
 archived/*
 report/*
+results/*

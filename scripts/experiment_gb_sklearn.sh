@@ -10,9 +10,12 @@
 #SBATCH -e gb_sklearn.err
 #SBATCH --gres=gpu:1
 
-conda activate /proj/uppmax2020-2-2/hapham/envs/power-identification
-cd /proj/uppmax2020-2-2/hapham/power-identification
+STORAGE_PJ=uppmax2024-2-13
+ENV_DIR=/proj/${STORAGE_PJ}/hapham/envs/power-identification
+PROJECT_DIR=/proj/${STORAGE_PJ}/hapham/power-identification
 
+conda activate ${ENV_DIR}
+cd ${PROJECT_DIR}
 
 # Change path to python script
-python experiments/classic_ml/experiment_gb_sklearn.py
+python experiments/classic_ml/experiment_gb_sklearn.py --project-dir ${PROJECT_DIR}
