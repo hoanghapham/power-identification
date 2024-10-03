@@ -10,9 +10,12 @@
 #SBATCH -e word_embeddings.err
 #SBATCH --gres=gpu:1
 
-conda activate /proj/uppmax2024-2-13/hapham/envs/power-identification
-cd /proj/uppmax2024-2-13/hapham/power-identification
+STORAGE_PJ=uppmax2024-2-13
+ENV_DIR=/proj/${STORAGE_PJ}/hapham/envs/power-identification
+PROJECT_DIR=/proj/${STORAGE_PJ}/hapham/power-identification
 
+conda activate ${ENV_DIR}
+cd ${PROJECT_DIR}
 
 # Change path to python script
-python experiments/feature_engineering/experiment_word_embeddings.py
+python experiments/feature_engineering/experiment_word_embeddings.py --project-dir ${PROJECT_DIR}
