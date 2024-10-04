@@ -15,9 +15,8 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 # Make packages in projects directory available for importing
-# env = dotenv_values(".env")
-PROJECT_DIR = Path.cwd()
-# (env["PROJECT_DIR"])
+env = dotenv_values(".env")
+PROJECT_DIR = Path(env["PROJECT_DIR"])
 sys.path.append(str(PROJECT_DIR))
 
 # Import
