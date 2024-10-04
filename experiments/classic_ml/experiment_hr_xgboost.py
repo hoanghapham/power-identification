@@ -34,7 +34,7 @@ logger = CustomLogger("results_gb_XGBoost", log_to_local=False)
 
 # Params
 NFOLDS = 5
-PREFERRED_DEVICE = 'cuda'
+PREFERRED_DEVICE = "cuda"
 
 #%%
 ## Load data

@@ -42,7 +42,7 @@ RESULTS_DIR = PROJECT_DIR / "results"
 if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-logger = CustomLogger("experiment_gb_sklearn", log_to_local=False)
+logger = CustomLogger("experiment_ua_sklearn", log_to_local=False)
 
 NFOLDS = 5
 
@@ -50,8 +50,8 @@ NFOLDS = 5
 #%%
 
 ## Load data
-logger.info(f"Load file: power-gb-train.tsv")
-data = load_data(file_path_list=[PROJECT_DIR / "data/train/power/power-gb-train.tsv"],text_head="text_en")
+logger.info(f"Load file: power-ua-train.tsv")
+data = load_data(file_path_list=[PROJECT_DIR / "data/train/power/power-ua-train.tsv"],text_head="text_en")
 logger.info(f"Data size: {len(data)}, % positive class: {sum(data.labels) / len(data) * 100:.2f}%")
 
 
@@ -68,7 +68,7 @@ avg_LinearSVC_word = get_average_metrics(results_LinearSVC_word)
 results_LinearSVC_word.append({"fold": "average", **avg_LinearSVC_word})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_LinearSVC_word.items()])
-write_ndjson_file(results_LinearSVC_word, RESULTS_DIR / "results_gb_LinearSVC_word.json")
+write_ndjson_file(results_LinearSVC_word, RESULTS_DIR / "results_ua_LinearSVC_word.json")
 
 
 #%%
@@ -83,7 +83,7 @@ avg_LinearSVC_char = get_average_metrics(results_LinearSVC_char)
 results_LinearSVC_char.append({"fold": "average", **avg_LinearSVC_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_LinearSVC_char.items()])
-write_ndjson_file(results_LinearSVC_char, RESULTS_DIR / "results_gb_LinearSVC_char.json")
+write_ndjson_file(results_LinearSVC_char, RESULTS_DIR / "results_ua_LinearSVC_char.json")
 
 
 # %%
@@ -99,7 +99,7 @@ avg_LogReg_word = get_average_metrics(results_LogReg_word)
 results_LogReg_word.append({"fold": "average", **avg_LogReg_word})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_LogReg_word.items()])
-write_ndjson_file(results_LogReg_word, RESULTS_DIR / "results_gb_LogReg_word.json")
+write_ndjson_file(results_LogReg_word, RESULTS_DIR / "results_ua_LogReg_word.json")
 
 # %%
 ### Char features
@@ -113,7 +113,7 @@ avg_LogReg_char = get_average_metrics(results_LogReg_char)
 results_LogReg_char.append({"fold": "average", **avg_LogReg_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_LogReg_char.items()])
-write_ndjson_file(results_LogReg_char, RESULTS_DIR / "results_gb_LogReg_char.json")
+write_ndjson_file(results_LogReg_char, RESULTS_DIR / "results_ua_LogReg_char.json")
 
 #%%
 ## SGDClassifier
@@ -128,7 +128,7 @@ avg_SGD_word = get_average_metrics(results_SGD_word)
 results_SGD_word.append({"fold": "average", **avg_SGD_word})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_SGD_word.items()])
-write_ndjson_file(results_SGD_word, RESULTS_DIR / "results_gb_SGD_word.json")
+write_ndjson_file(results_SGD_word, RESULTS_DIR / "results_ua_SGD_word.json")
 
 
 # %%
@@ -142,7 +142,7 @@ avg_SGD_char = get_average_metrics(results_SGD_char)
 results_SGD_char.append({"fold": "average", **avg_SGD_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_SGD_char.items()])
-write_ndjson_file(results_SGD_char, RESULTS_DIR / "results_gb_SGD_char.json")
+write_ndjson_file(results_SGD_char, RESULTS_DIR / "results_ua_SGD_char.json")
 
 #%%
 ## Decision Tree Classifier
@@ -156,7 +156,7 @@ avg_DecisionTree_word = get_average_metrics(results_DecisionTree_word)
 results_DecisionTree_word.append({"fold": "average", **avg_DecisionTree_word})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_word.items()])
-write_ndjson_file(results_DecisionTree_word, RESULTS_DIR / "results_gb_DecisionTree_word.json")
+write_ndjson_file(results_DecisionTree_word, RESULTS_DIR / "results_ua_DecisionTree_word.json")
 
 #%%
 ### char feature
@@ -169,7 +169,7 @@ avg_DecisionTree_char = get_average_metrics(results_DecisionTree_char)
 results_DecisionTree_char.append({"fold": "average", **avg_DecisionTree_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_char.items()])
-write_ndjson_file(results_DecisionTree_char, RESULTS_DIR / "results_gb_DecisionTree_char.json")
+write_ndjson_file(results_DecisionTree_char, RESULTS_DIR / "results_ua_DecisionTree_char.json")
 
 
 #%%
@@ -185,7 +185,7 @@ avg_RandomForest_word = get_average_metrics(results_RandomForest_word)
 results_RandomForest_word.append({"fold": "average", **avg_RandomForest_word})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_RandomForest_word.items()])
-write_ndjson_file(results_RandomForest_word, RESULTS_DIR / "results_gb_RandomForest_word.json")
+write_ndjson_file(results_RandomForest_word, RESULTS_DIR / "results_ua_RandomForest_word.json")
 
 
 #%%
@@ -200,7 +200,7 @@ avg_RandomForest_char = get_average_metrics(results_RandomForest_char)
 results_RandomForest_char.append({"fold": "average", **avg_RandomForest_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_RandomForest_char.items()])
-write_ndjson_file(results_RandomForest_char, RESULTS_DIR / "results_gb_RandomForest_char.json")
+write_ndjson_file(results_RandomForest_char, RESULTS_DIR / "results_ua_RandomForest_char.json")
 
 
 #%%
@@ -219,5 +219,5 @@ results_aggr = [
 ]
 
 results_df = pd.DataFrame(data=results_aggr)
-results_df.to_csv(RESULTS_DIR / "results_gb_sklearn.csv", index=False)
-results_df.to_latex(RESULTS_DIR / "results_gb_sklearn.tex", index=False)
+results_df.to_csv(RESULTS_DIR / "results_ua_sklearn.csv", index=False)
+results_df.to_latex(RESULTS_DIR / "results_ua_sklearn.tex", index=False)
