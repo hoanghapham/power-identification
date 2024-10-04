@@ -21,6 +21,7 @@ import json
 from sklearn.feature_extraction.text import TfidfVectorizer
 import xgboost as xgb
 import pandas as pd
+import numpy as np
 
 from sklearn.model_selection import KFold
 
@@ -75,7 +76,7 @@ def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str):
             "booster": "gbtree",
             "objective": "binary:logistic",  # there is also binary:hinge but hinge does not output probability
             "tree_method": "hist",  # default to hist
-            "device": "cuda",
+            "device": "cpu",
 
             # Params for tree booster
             "eta": 0.3,
@@ -91,7 +92,7 @@ def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str):
 
         model = xgb.train(
             params = params,
-            dtrain = train_dmat_words,
+            dtrain = train_dmat,
             num_boost_round = ITERATIONS,
             evals = evals_words,
             verbose_eval = False

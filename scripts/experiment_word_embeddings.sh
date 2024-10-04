@@ -18,4 +18,4 @@ conda activate ${ENV_DIR}
 cd ${PROJECT_DIR}
 
 # Change path to python script
-python experiments/feature_engineering/experiment_word_embeddings.py --project-dir ${PROJECT_DIR}
+python experiments/feature_engineering/experiment_word_embeddings.py
