@@ -1,15 +1,24 @@
+from logging import Logger
+
 import altair as alt
 import pandas as pd
 import numpy as np
 
 import torch
 from torch import nn
-
-from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
-from .models import RNNClassifier, NeuralNetwork, TrainConfig
-from .data_processing import PositionalEncoder
+from sklearn.base import BaseEstimator
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import KFold
+
+import xgboost as xgb
+
+from lib.data_processing import RawDataset, PositionalEncoder, encode_torch_data
+from lib.models import RNNClassifier, NeuralNetwork, TrainConfig
+
+
 
 def plot_results(
         title: str, 
@@ -168,3 +177,161 @@ def evaluate_rnn_model(
         f1 = 2 * true_pos / (2 * true_pos + false_pos + false_neg)
 
     return accuracy.item(), precision.item(), recall.item(), f1.item()
+
+
+
+# Helper functions
+def get_average_metrics(result_list: list[dict]) -> dict:
+    accuracy = np.mean([[result['accuracy'] for result in result_list]])
+    precision = np.mean([[result['precision'] for result in result_list]])
+    recall = np.mean([[result['recall'] for result in result_list]])
+    f1 = np.mean([[result['f1'] for result in result_list]])
+    auc = np.mean([[result['auc'] for result in result_list]])
+    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1, "auc": auc}
+
+
+def train_evaluate_sklearn(model: BaseEstimator, data: RawDataset, nfolds: int, feature_type: str, logger: Logger):
+    result_list = []
+    kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        logger.info(f"CV fold {fold_idx}")
+
+        # Prepare encoders
+        if feature_type == "word": 
+            encoder = TfidfVectorizer(max_features=50000)
+        elif feature_type == "char":
+            encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
+        else:
+            raise ValueError(f"Not supported feature type: {feature_type}")
+        
+        encoder.fit(data.subset(train_idx).texts)
+
+        X_train = encoder.transform(data.subset(train_idx).texts)
+        X_test = encoder.transform(data.subset(test_idx).texts)
+        label_train = data.subset(train_idx).labels
+        label_test = data.subset(test_idx).labels
+
+        # Fit model
+        model.fit(X_train, label_train)
+
+        # Predict & Evaluate
+        pred = model.predict(X_test)
+        probs = model.predict_proba(X_test)
+
+        result = evaluate(label_test, pred, probs[:, 1])
+        result_list.append({"fold": str(fold_idx), **result})
+
+    return model, result_list
+
+
+def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str = "cpu"):
+    result_list = []
+    kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        logger.info(f"CV fold {fold_idx}")
+
+        # Prepare encoders
+        if feature_type == "word": 
+            encoder = TfidfVectorizer(max_features=50000)
+        elif feature_type == "char":
+            encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
+        else:
+            raise ValueError(f"Not supported feature type: {feature_type}")
+        
+        encoder.fit(data.subset(train_idx).texts)
+
+        X_train = encoder.transform(data.subset(train_idx).texts)
+        X_test = encoder.transform(data.subset(test_idx).texts)
+        label_train = data.subset(train_idx).labels
+        label_test = data.subset(test_idx).labels
+
+        train_dmat = xgb.DMatrix(X_train, pd.array(label_train).astype("category"))
+        test_dmat = xgb.DMatrix(X_test, pd.array(label_test).astype("category"))
+
+        params = {
+            "booster": "gbtree",
+            "objective": "binary:logistic",  # there is also binary:hinge but hinge does not output probability
+            "tree_method": "hist",  # default to hist
+            "device": device,
+
+            # Params for tree booster
+            "eta": 0.3,
+            "gamma": 0.0,  # Min loss achieved to split the tree
+            "max_depth": 6,
+            "reg_alpha": 0,
+            "reg_lambda": 1,
+        }
+
+        # Train
+        ITERATIONS = 2000
+
+        evals_words = [(train_dmat, "train")]
+
+        model = xgb.train(
+            params = params,
+            dtrain = train_dmat,
+            num_boost_round = ITERATIONS,
+            evals = evals_words,
+            verbose_eval = False
+        )
+
+        # Evaluate
+        probs = model.predict(test_dmat)
+        result = evaluate(label_test, probs > 0.5, probs)
+        result_list.append({"fold": str(fold_idx), **result})
+
+    return model, result_list
+
+
+def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str):
+    result_list = []
+    kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        logger.info(f"CV fold {fold_idx}")
+
+        # Prepare encoders
+        if feature_type == "word": 
+            encoder = TfidfVectorizer(max_features=50000)
+        elif feature_type == "char":
+            encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
+        else:
+            raise ValueError(f"Not supported feature type: {feature_type}")
+        
+        encoder.fit(data.subset(train_idx).texts)
+        
+        # Encode data
+        train_data = encode_torch_data(data.subset(train_idx), encoder)
+        test_data = encode_torch_data(data.subset(test_idx), encoder)
+
+        # Init model
+        train_config = TrainConfig(
+            num_epochs      = 10,
+            early_stop      = False,
+            violation_limit = 5
+        )
+
+        dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
+
+        model = NeuralNetwork(
+            input_size=len(encoder.vocabulary_),
+            hidden_size=128,
+            device=device
+        )
+
+        # Train
+        model.fit(dataloader, train_config, disable_progress_bar=True)
+
+        # Evaluate
+        with torch.no_grad():
+            X_test_nn = torch.stack([test[0] for test in test_data]).cpu()
+            y_test_nn = torch.stack([test[1] for test in test_data]).cpu()
+            y_pred_nn_words = model.predict(X_test_nn)
+            logits_nn_words = model.forward(X_test_nn)
+
+        result = evaluate(y_test_nn.cpu(), y_pred_nn_words.cpu(), logits_nn_words.cpu())
+        result_list.append({"fold": str(fold_idx), **result})
+
+    return model, result_list
