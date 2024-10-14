@@ -267,13 +267,13 @@ def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, log
         # Train
         ITERATIONS = 2000
 
-        evals_words = [(train_dmat, "train")]
+        evals = [(train_dmat, "train")]
 
         model = xgb.train(
             params = params,
             dtrain = train_dmat,
             num_boost_round = ITERATIONS,
-            evals = evals_words,
+            evals = evals,
             verbose_eval = False
         )
 
@@ -328,10 +328,76 @@ def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: 
         with torch.no_grad():
             X_test_nn = torch.stack([test[0] for test in test_data]).cpu()
             y_test_nn = torch.stack([test[1] for test in test_data]).cpu()
-            y_pred_nn_words = model.predict(X_test_nn)
-            logits_nn_words = model.forward(X_test_nn)
+            y_pred_nn = model.predict(X_test_nn)
+            logits_nn = model.forward(X_test_nn)
 
-        result = evaluate(y_test_nn.cpu(), y_pred_nn_words.cpu(), logits_nn_words.cpu())
+        result = evaluate(y_test_nn.cpu(), y_pred_nn.cpu(), logits_nn.cpu())
+        result_list.append({"fold": str(fold_idx), **result})
+
+    return model, result_list
+
+
+def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str):
+
+    result_list = []
+    kfold = KFold(n_splits=nfolds, shuffle=False)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        logger.info(f"CV fold {fold_idx}")
+
+        if feature_type == "word":
+            encoder = PositionalEncoder()
+        elif feature_type == "char":
+            chars_encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
+            encoder = PositionalEncoder(tokenizer=chars_encoder.build_tokenizer())
+
+        encoder.fit(data.subset(train_idx).texts)
+
+        train_dataloader = DataLoader(data.subset(train_idx), batch_size=128, shuffle=True)
+        test_dataloader = DataLoader(data.subset(test_idx), batch_size=128, shuffle=False)
+
+        # Prepare baseline config
+        train_config = TrainConfig(
+            optimizer_params = {'lr': 0.01},
+            num_epochs       = 10,
+            early_stop       = False,
+            violation_limit  = 5
+        )
+
+        # Train baseline model
+        model = RNNClassifier(
+            rnn_network         = nn.LSTM,
+            word_embedding_dim  = 32,
+            hidden_dim          = 64,
+            bidirectional       = False,
+            dropout             = 0,
+            encoder             = encoder,
+            device              = device
+        )
+
+
+        model.fit(train_dataloader, train_config, no_progress_bar=True)
+
+        # Evaluate
+        with torch.no_grad():
+            model.device = "cpu"
+            model.cpu()
+
+            pred_lst = []
+            probs_lst = []
+
+            for _, _, raw_inputs, raw_targets in test_dataloader:
+                batch_encoder = PositionalEncoder(vocabulary=encoder.vocabulary)
+                test_inputs = batch_encoder.fit_transform(raw_inputs).cpu()
+                test_targets = torch.as_tensor(raw_targets, dtype=torch.float).cpu()
+                
+                pred_lst.append(model.predict(test_inputs))
+                probs_lst.append(model._sigmoid(model.forward(test_inputs)).squeeze())
+
+        pred = torch.cat(pred_lst).long().numpy()
+        probs = torch.concat(probs_lst).numpy()
+
+        result = evaluate(data.subset(test_idx).labels, pred, probs)
         result_list.append({"fold": str(fold_idx), **result})
 
     return model, result_list
