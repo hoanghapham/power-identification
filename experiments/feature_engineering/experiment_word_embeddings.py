@@ -17,6 +17,7 @@ from dotenv import dotenv_values
 # Make packages in projects directory available for importing
 env = dotenv_values(".env")
 PROJECT_DIR = Path(env["PROJECT_DIR"])
+# PROJECT_DIR = Path.cwd()
 sys.path.append(str(PROJECT_DIR))
 
 # Import
@@ -26,12 +27,14 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from scipy.sparse import issparse
+import datetime
 
 from sklearn.model_selection import KFold
 from lib.models import TrainConfig, NeuralNetwork
 from lib.data_processing import load_data, get_embeddings, create_dataloader
 from lib.evaluation import evaluate
 from lib.logger import CustomLogger
+from lib.utils import write_ndjson_file
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -40,7 +43,11 @@ if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Set up logger
-logger = CustomLogger("experiment_word_embeddings", log_to_local=False)
+logger = CustomLogger("experiment_word_embeddings", log_to_local=True)
+
+## 
+import nltk
+nltk.download('punkt_tab')
 
 ## Load data
 logger.info(f"Load file: power-gb-train.tsv")
@@ -86,7 +93,10 @@ def train_and_evaluate(embedding_method, df=df, max_features=None, train_config=
         
         # Train the model
         logger.info(f"Fitting feed-forward neural network model with {embedding_method} embeddings")
-        model_nn.fit(train_dataloader, train_config, disable_progress_bar=False)
+        t0 = datetime.datetime.now()
+        model_nn.fit(train_dataloader, train_config)
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold + 1} train time: {time_elapsed:.4} seconds")
         
         # Evaluate on the validation fold
         with torch.no_grad():
@@ -116,37 +126,41 @@ def train_and_evaluate(embedding_method, df=df, max_features=None, train_config=
     return fold_metrics, average_metrics
 
 # Main script to run the experiments
-if __name__ == "__main__":
-    results_dict = {}
-    for embedding_method, max_features in {'Binary_BoW': [1000, 5000, 10000, 20000, 50000],
-                                           'TF-IDF': [1000, 5000, 10000, 20000, 50000],
-                                           'Word2Vec': [100, 200, 300],
-                                           'GloVe': [100, 200, 300],
-                                           'DistilBERT': [64, 128, 256]}.items():
-        for feature in max_features:
-            logger.info(f"Running {embedding_method} with max features/dimensions/lengths: {feature}")
-            # Train and evaluate with cross-validation
-            fold_metrics, average_metrics = train_and_evaluate(embedding_method=embedding_method, 
-                                                               df=df, 
-                                                               max_features=feature,
-                                                               train_config=train_config, 
-                                                               n_splits=5, 
-                                                               device=device)                   
-            
-            # Log results for this embedding method and configuration
-            logger.info(f"Results for {embedding_method} max feature {feature}: {average_metrics}")
-            
-            # Save results to the dictionary (store both per-fold and average metrics)
-            results_dict[f"{embedding_method} max feature {feature}"] = {"fold_metrics": fold_metrics,
-                                                                         "average_metrics": average_metrics}
-            
-    results_df = pd.DataFrame.from_dict(results_dict, orient="index") \
-        .reset_index().rename(columns={"index": "model"})
+results_aggr = []
+
+for embedding_method, max_features in {'Binary_BoW': [1000, 5000, 10000, 20000, 50000],
+                                        'TF-IDF': [1000, 5000, 10000, 20000, 50000],
+                                        'Word2Vec': [100, 200, 300],
+                                        'GloVe': [100, 200, 300],
+                                        'DistilBERT': [64, 128, 256]}.items():
+    for feature in max_features:
+        logger.info(f"Running {embedding_method} with max features/dimensions/lengths: {feature}")
+        # Train and evaluate with cross-validation
+        fold_metrics, average_metrics = train_and_evaluate(embedding_method=embedding_method, 
+                                                            df=df, 
+                                                            max_features=feature,
+                                                            train_config=train_config, 
+                                                            n_splits=5, 
+                                                            device=device)                   
         
-    # Write result to JSON, CSV, LaTeX
-    with open(RESULTS_DIR / "results_embeddings.json", "w") as f:
-        json.dump(results_dict, f)
+        # Log results for this embedding method and configuration
+        logger.info(f"Results for {embedding_method} max feature {feature}: {average_metrics}")
         
-    results_df.to_csv(RESULTS_DIR / "results_embeddings.csv", index=False)
-    
-    results_df.to_latex(RESULTS_DIR / "results_embeddings.tex", index=False)
+        # Save results to the dictionary (store both per-fold and average metrics)
+        results_aggr.append(
+            {
+                "model": f"{embedding_method} max feature {feature}",  
+                "fold_metrics": fold_metrics,
+                "average_metrics": average_metrics
+            }
+        )
+        write_ndjson_file(results_aggr, RESULTS_DIR / "result_embeddings.json")
+
+# Write final results
+logger.info("Write final result")
+
+write_ndjson_file(results_aggr, RESULTS_DIR / "result_embeddings.json")
+
+results_df = pd.DataFrame(data=results_aggr)
+results_df.to_csv(RESULTS_DIR / "results_embeddings.csv", index=False)
+results_df.to_latex(RESULTS_DIR / "results_embeddings.tex", index=False)

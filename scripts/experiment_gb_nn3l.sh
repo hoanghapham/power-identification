@@ -5,9 +5,9 @@
 #SBATCH -p node
 #SBATCH -N 1
 #SBATCH -t 24:00:00
-#SBATCH -J gb_sklearn
-#SBATCH -o logs_uppmax/gb_sklearn.out
-#SBATCH -e logs_uppmax/gb_sklearn.err
+#SBATCH -J gb_nn3l
+#SBATCH -o logs_uppmax/gb_nn3l.out
+#SBATCH -e logs_uppmax/gb_nn3l.err
 #SBATCH --gres=gpu:1
 
 STORAGE_PJ=uppmax2024-2-13
@@ -18,4 +18,4 @@ conda activate ${ENV_DIR}
 cd ${PROJECT_DIR}
 
 # Change path to python script
-python experiments/classic_ml/experiment_gb_sklearn.py
+python experiments/classic_ml/experiment_gb_nn3l.py

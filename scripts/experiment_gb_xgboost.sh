@@ -5,7 +5,7 @@
 #SBATCH -p node
 #SBATCH -N 1
 #SBATCH -t 24:00:00
-#SBATCH -J logs_uppmax/gb_xgboost
+#SBATCH -J gb_xgboost
 #SBATCH -o logs_uppmax/gb_xgboost.out
 #SBATCH -e logs_uppmax/gb_xgboost.err
 #SBATCH --gres=gpu:1

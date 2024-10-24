@@ -269,8 +269,8 @@ def split_data(data: RawDataset, test_size=0.2, random_state=None) -> tuple[RawD
     return data.subset(train_indices), data.subset(test_indices)
 
 
-def encode_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectorizer):
-    """Convenience function to create the final encoded dataset"""
+def encode_torch_data(raw_data: RawDataset, encoder: PositionalEncoder | TfidfVectorizer):
+    """Convenience function to create the encoded dataset compatible with torch models"""
     # Encode text
     enc_texts_csr = encoder.transform(raw_data.texts)  
     
