@@ -44,11 +44,13 @@ class CustomLogger(logging.Logger):
         level: str = "INFO",
         log_to_local: bool = False,
         disable_traceback = False,
+        log_path: str = "./logs",
         *args,
         **kwargs,
     ):
         super().__init__(logger_name, level, *args, **kwargs)
         self.disable_traceback = disable_traceback
+        self.log_path = log_path
 
         self._add_stream_handler()
 
@@ -64,7 +66,8 @@ class CustomLogger(logging.Logger):
 
     def _add_file_handler(self):
         """Add file handler to write log to local file """
-        log_path = Path("./logs")
+        log_path = Path(self.log_path)
+
         if not log_path.exists():
             log_path.mkdir()
 

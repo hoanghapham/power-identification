@@ -42,7 +42,7 @@ RESULTS_DIR = PROJECT_DIR / "results"
 if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-logger = CustomLogger("experiment_gb_sklearn", log_to_local=False)
+logger = CustomLogger("experiment_gb_sklearn", log_to_local=True, log_path=PROJECT_DIR / "logs")
 
 NFOLDS = 5
 
@@ -58,17 +58,17 @@ logger.info(f"Data size: {len(data)}, % positive class: {sum(data.labels) / len(
 # %%
 ## Linear SVC
 ### Word feature
-logger.info("Fit LinearSVC model, word feature")
-base_svc = LinearSVC(dual="auto")
-model_LinearSVC_word = CalibratedClassifierCV(estimator=base_svc, cv=5)
+# logger.info("Fit LinearSVC model, word feature")
+# base_svc = LinearSVC(dual="auto")
+# model_LinearSVC_word = CalibratedClassifierCV(estimator=base_svc, cv=5)
 
-# Train, test, evalute
-model_LinearSVC_word, results_LinearSVC_word = train_evaluate_sklearn(model_LinearSVC_word, data, NFOLDS, "word", logger)
-avg_LinearSVC_word = get_average_metrics(results_LinearSVC_word)
-results_LinearSVC_word.append({"fold": "average", **avg_LinearSVC_word})
+# # Train, test, evalute
+# model_LinearSVC_word, results_LinearSVC_word = train_evaluate_sklearn(model_LinearSVC_word, data, NFOLDS, "word", logger)
+# avg_LinearSVC_word = get_average_metrics(results_LinearSVC_word)
+# results_LinearSVC_word.append({"fold": "average", **avg_LinearSVC_word})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_LinearSVC_word.items()])
-write_ndjson_file(results_LinearSVC_word, RESULTS_DIR / "results_gb_LinearSVC_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_LinearSVC_word.items()])
+# write_ndjson_file(results_LinearSVC_word, RESULTS_DIR / "results_gb_LinearSVC_word.json")
 
 
 #%%
@@ -90,16 +90,16 @@ write_ndjson_file(results_LinearSVC_char, RESULTS_DIR / "results_gb_LinearSVC_ch
 ## Logistic Regression
 ### Word features
 
-logger.info("Fit LogisticRegression model, word feature")
-model_LogReg_word = LogisticRegression()
+# logger.info("Fit LogisticRegression model, word feature")
+# model_LogReg_word = LogisticRegression()
 
-# Train, test, evalute
-model_LogReg_word, results_LogReg_word = train_evaluate_sklearn(model_LogReg_word, data, NFOLDS, "word", logger)
-avg_LogReg_word = get_average_metrics(results_LogReg_word)
-results_LogReg_word.append({"fold": "average", **avg_LogReg_word})
+# # Train, test, evalute
+# model_LogReg_word, results_LogReg_word = train_evaluate_sklearn(model_LogReg_word, data, NFOLDS, "word", logger)
+# avg_LogReg_word = get_average_metrics(results_LogReg_word)
+# results_LogReg_word.append({"fold": "average", **avg_LogReg_word})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_LogReg_word.items()])
-write_ndjson_file(results_LogReg_word, RESULTS_DIR / "results_gb_LogReg_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_LogReg_word.items()])
+# write_ndjson_file(results_LogReg_word, RESULTS_DIR / "results_gb_LogReg_word.json")
 
 # %%
 ### Char features
@@ -119,16 +119,16 @@ write_ndjson_file(results_LogReg_char, RESULTS_DIR / "results_gb_LogReg_char.jso
 ## SGDClassifier
 ### word feature
 
-logger.info("Fit SGDClassifier model, word feature")
-model_SGD_word = SGDClassifier(loss="log_loss")
+# logger.info("Fit SGDClassifier model, word feature")
+# model_SGD_word = SGDClassifier(loss="log_loss")
 
-# Train, test, evalute
-model_SGD_word, results_SGD_word = train_evaluate_sklearn(model_SGD_word, data, NFOLDS, "word", logger)
-avg_SGD_word = get_average_metrics(results_SGD_word)
-results_SGD_word.append({"fold": "average", **avg_SGD_word})
+# # Train, test, evalute
+# model_SGD_word, results_SGD_word = train_evaluate_sklearn(model_SGD_word, data, NFOLDS, "word", logger)
+# avg_SGD_word = get_average_metrics(results_SGD_word)
+# results_SGD_word.append({"fold": "average", **avg_SGD_word})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_SGD_word.items()])
-write_ndjson_file(results_SGD_word, RESULTS_DIR / "results_gb_SGD_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_SGD_word.items()])
+# write_ndjson_file(results_SGD_word, RESULTS_DIR / "results_gb_SGD_word.json")
 
 
 # %%
@@ -147,45 +147,45 @@ write_ndjson_file(results_SGD_char, RESULTS_DIR / "results_gb_SGD_char.json")
 #%%
 ## Decision Tree Classifier
 ### word feature
-logger.info("Fit DecisionTreeClassifier model, word feature")
-model_DecisionTree_word = DecisionTreeClassifier()
+# logger.info("Fit DecisionTreeClassifier model, word feature")
+# model_DecisionTree_word = DecisionTreeClassifier()
 
-# Train, test, evalute
-model_DecisionTree_word, results_DecisionTree_word = train_evaluate_sklearn(model_DecisionTree_word, data, NFOLDS, "word", logger)
-avg_DecisionTree_word = get_average_metrics(results_DecisionTree_word)
-results_DecisionTree_word.append({"fold": "average", **avg_DecisionTree_word})
+# # Train, test, evalute
+# model_DecisionTree_word, results_DecisionTree_word = train_evaluate_sklearn(model_DecisionTree_word, data, NFOLDS, "word", logger)
+# avg_DecisionTree_word = get_average_metrics(results_DecisionTree_word)
+# results_DecisionTree_word.append({"fold": "average", **avg_DecisionTree_word})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_word.items()])
-write_ndjson_file(results_DecisionTree_word, RESULTS_DIR / "results_gb_DecisionTree_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_word.items()])
+# write_ndjson_file(results_DecisionTree_word, RESULTS_DIR / "results_gb_DecisionTree_word.json")
 
 #%%
 ### char feature
-logger.info("Fit DecisionTreeClassifier model, char feature")
-model_DecisionTree_char = DecisionTreeClassifier()
+# logger.info("Fit DecisionTreeClassifier model, char feature")
+# model_DecisionTree_char = DecisionTreeClassifier()
 
-# Train, test, evalute
-model_DecisionTree_char, results_DecisionTree_char = train_evaluate_sklearn(model_DecisionTree_char, data, NFOLDS, "char", logger)
-avg_DecisionTree_char = get_average_metrics(results_DecisionTree_char)
-results_DecisionTree_char.append({"fold": "average", **avg_DecisionTree_char})
+# # Train, test, evalute
+# model_DecisionTree_char, results_DecisionTree_char = train_evaluate_sklearn(model_DecisionTree_char, data, NFOLDS, "char", logger)
+# avg_DecisionTree_char = get_average_metrics(results_DecisionTree_char)
+# results_DecisionTree_char.append({"fold": "average", **avg_DecisionTree_char})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_char.items()])
-write_ndjson_file(results_DecisionTree_char, RESULTS_DIR / "results_gb_DecisionTree_char.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_DecisionTree_char.items()])
+# write_ndjson_file(results_DecisionTree_char, RESULTS_DIR / "results_gb_DecisionTree_char.json")
 
 
 #%%
 ## Random Forest Classifier
 ### word feature
 
-logger.info("Fit RandomForestClassifier model, word feature")
-model_RandomForest_word = RandomForestClassifier()
+# logger.info("Fit RandomForestClassifier model, word feature")
+# model_RandomForest_word = RandomForestClassifier()
 
-# Train, test, evalute
-model_RandomForest_word, results_RandomForest_word = train_evaluate_sklearn(model_RandomForest_word, data, NFOLDS, "word", logger)
-avg_RandomForest_word = get_average_metrics(results_RandomForest_word)
-results_RandomForest_word.append({"fold": "average", **avg_RandomForest_word})
+# # Train, test, evalute
+# model_RandomForest_word, results_RandomForest_word = train_evaluate_sklearn(model_RandomForest_word, data, NFOLDS, "word", logger)
+# avg_RandomForest_word = get_average_metrics(results_RandomForest_word)
+# results_RandomForest_word.append({"fold": "average", **avg_RandomForest_word})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_RandomForest_word.items()])
-write_ndjson_file(results_RandomForest_word, RESULTS_DIR / "results_gb_RandomForest_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_RandomForest_word.items()])
+# write_ndjson_file(results_RandomForest_word, RESULTS_DIR / "results_gb_RandomForest_word.json")
 
 
 #%%
@@ -208,14 +208,16 @@ write_ndjson_file(results_RandomForest_char, RESULTS_DIR / "results_gb_RandomFor
 logger.info("Write final results")
 
 results_aggr = [
-    {"model": "LinearSVC_word", **avg_LinearSVC_word},
+    # {"model": "LinearSVC_word", **avg_LinearSVC_word},
     {"model": "LinearSVC_char", **avg_LinearSVC_char},
-    {"model": "SGD_word", **avg_SGD_word},
+    # {"model": "SGD_word", **avg_SGD_word},
     {"model": "SGD_char", **avg_SGD_char},
-    {"model": "DecisionTree_word", **avg_DecisionTree_word},
-    {"model": "DecisionTree_char", **avg_DecisionTree_char},
-    {"model": "RandomForest_word", **avg_RandomForest_word},
-    {"model": "RandomForest_char", **avg_RandomForest_char}
+    # {"model": "DecisionTree_word", **avg_DecisionTree_word},
+    # {"model": "DecisionTree_char", **avg_DecisionTree_char},
+    # {"model": "RandomForest_word", **avg_RandomForest_word},
+    {"model": "RandomForest_char", **avg_RandomForest_char},
+    # {"model": "LogReg_word", **avg_LogReg_word},
+    {"model": "LogReg_char", **avg_LogReg_char}
 ]
 
 results_df = pd.DataFrame(data=results_aggr)

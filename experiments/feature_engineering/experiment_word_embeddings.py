@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from scipy.sparse import issparse
+import datetime
 
 from sklearn.model_selection import KFold
 from lib.models import TrainConfig, NeuralNetwork
@@ -42,7 +43,7 @@ if not RESULTS_DIR.exists():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Set up logger
-logger = CustomLogger("experiment_word_embeddings", log_to_local=False)
+logger = CustomLogger("experiment_word_embeddings", log_to_local=True)
 
 ## 
 import nltk
@@ -92,7 +93,10 @@ def train_and_evaluate(embedding_method, df=df, max_features=None, train_config=
         
         # Train the model
         logger.info(f"Fitting feed-forward neural network model with {embedding_method} embeddings")
+        t0 = datetime.datetime.now()
         model_nn.fit(train_dataloader, train_config)
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold + 1} train time: {time_elapsed:.4} seconds")
         
         # Evaluate on the validation fold
         with torch.no_grad():

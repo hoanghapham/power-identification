@@ -3,6 +3,7 @@ from logging import Logger
 import altair as alt
 import pandas as pd
 import numpy as np
+import datetime
 
 import torch
 from torch import nn
@@ -213,7 +214,11 @@ def train_evaluate_sklearn(model: BaseEstimator, data: RawDataset, nfolds: int, 
         label_test = data.subset(test_idx).labels
 
         # Fit model
+        t0 = datetime.datetime.now()
         model.fit(X_train, label_train)
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold_idx} train time: {time_elapsed / 60:.4} minutes")
+
 
         # Predict & Evaluate
         pred = model.predict(X_test)
@@ -225,7 +230,7 @@ def train_evaluate_sklearn(model: BaseEstimator, data: RawDataset, nfolds: int, 
     return model, result_list
 
 
-def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str = "cpu"):
+def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str = "cpu", iterations: int = 10):
     result_list = []
     kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
 
@@ -265,17 +270,19 @@ def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, log
         }
 
         # Train
-        ITERATIONS = 2000
 
         evals = [(train_dmat, "train")]
 
+        t0 = datetime.datetime.now()
         model = xgb.train(
             params = params,
             dtrain = train_dmat,
-            num_boost_round = ITERATIONS,
+            num_boost_round = iterations,
             evals = evals,
             verbose_eval = False
         )
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold_idx} train time: {time_elapsed / 60:.4} minutes")
 
         # Evaluate
         probs = model.predict(test_dmat)
@@ -285,7 +292,7 @@ def train_evaluate_xgboost(data: RawDataset, nfolds: int, feature_type: str, log
     return model, result_list
 
 
-def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str):
+def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str, n_hidden_layers: int = 1):
     result_list = []
     kfold = KFold(n_splits=nfolds, shuffle=False, random_state=None)
 
@@ -301,7 +308,7 @@ def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: 
             raise ValueError(f"Not supported feature type: {feature_type}")
         
         encoder.fit(data.subset(train_idx).texts)
-        
+
         # Encode data
         train_data = encode_torch_data(data.subset(train_idx), encoder)
         test_data = encode_torch_data(data.subset(test_idx), encoder)
@@ -318,11 +325,16 @@ def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: 
         model = NeuralNetwork(
             input_size=len(encoder.vocabulary_),
             hidden_size=128,
+            n_linear_layers=n_hidden_layers,
             device=device
         )
 
         # Train
+        t0 = datetime.datetime.now()
         model.fit(dataloader, train_config, disable_progress_bar=True)
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold_idx} train time: {time_elapsed / 60:.4} minutes")
+    
 
         # Evaluate
         with torch.no_grad():
@@ -337,7 +349,8 @@ def train_evaluate_nn(data: RawDataset, nfolds: int, feature_type: str, logger: 
     return model, result_list
 
 
-def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str):
+def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger: Logger, device: str, 
+                       word_embedding_dim: int = 32, hidden_dim: int = 64, bidirectional: bool = False):
 
     result_list = []
     kfold = KFold(n_splits=nfolds, shuffle=False)
@@ -350,6 +363,8 @@ def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger:
         elif feature_type == "char":
             chars_encoder = TfidfVectorizer(max_features=50000, analyzer="char", ngram_range=(3,5), use_idf=True, sublinear_tf=True)
             encoder = PositionalEncoder(tokenizer=chars_encoder.build_tokenizer())
+        else:
+            raise ValueError(f"Not supported feature type: {feature_type}")
 
         encoder.fit(data.subset(train_idx).texts)
 
@@ -367,16 +382,20 @@ def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger:
         # Train baseline model
         model = RNNClassifier(
             rnn_network         = nn.LSTM,
-            word_embedding_dim  = 32,
-            hidden_dim          = 64,
-            bidirectional       = False,
+            word_embedding_dim  = word_embedding_dim,
+            hidden_dim          = hidden_dim,
+            bidirectional       = bidirectional,
             dropout             = 0,
             encoder             = encoder,
             device              = device
         )
 
-
+        t0 = datetime.datetime.now()
         model.fit(train_dataloader, train_config, no_progress_bar=True)
+
+        time_elapsed = (datetime.datetime.now() - t0).total_seconds()
+        logger.info(f"Fold {fold_idx} train time: {time_elapsed / 60:.4} minutes")
+
 
         # Evaluate
         with torch.no_grad():
@@ -389,7 +408,7 @@ def train_evaluate_rnn(data: RawDataset, nfolds: int, feature_type: str, logger:
             for _, _, raw_inputs, raw_targets in test_dataloader:
                 batch_encoder = PositionalEncoder(vocabulary=encoder.vocabulary)
                 test_inputs = batch_encoder.fit_transform(raw_inputs).cpu()
-                test_targets = torch.as_tensor(raw_targets, dtype=torch.float).cpu()
+                # test_targets = torch.as_tensor(raw_targets, dtype=torch.float).cpu()
                 
                 pred_lst.append(model.predict(test_inputs))
                 probs_lst.append(model._sigmoid(model.forward(test_inputs)).squeeze())

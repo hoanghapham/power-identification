@@ -20,7 +20,7 @@ from lib.logger import CustomLogger
 
 
 # Set up logger
-logger = CustomLogger("experiment_gb_rnn", log_to_local=True, log_path=PROJECT_DIR / "logs")
+logger = CustomLogger("experiment_gb_rnnbig", log_to_local=False, log_path=PROJECT_DIR / "logs")
 
 
 # Setup folders
@@ -57,23 +57,23 @@ logger.info(f"Data size: {len(data)}, % positive class: {sum(data.labels) / len(
 ## Word features
 # logger.info("Fit RNNClassifier model, word feature")
 
-# model_RNNClassifier_word, results_RNNClassifier_word = train_evaluate_rnn(data, NFOLDS, "word", logger, device=DEVICE)
+# model_RNNClassifier_word, results_RNNClassifier_word = train_evaluate_rnn(data, NFOLDS, "word", logger, device=DEVICE, hidden_dim=128)
 # avg_RNNClassifier_word = get_average_metrics(results_RNNClassifier_word)
 # results_RNNClassifier_word.append({"fold": "average", **avg_RNNClassifier_word})
 
 # logger.info([f"{key}: {value:.3f}" for key, value in avg_RNNClassifier_word.items()])
-# write_ndjson_file(results_RNNClassifier_word, RESULTS_DIR / "results_gb_RNNClassifier_word.json")
+# write_ndjson_file(results_RNNClassifier_word, RESULTS_DIR / "results_gb_RNNClassifierbig_word.json")
 
 #%%
 ## Char feature
 logger.info("Fit RNNClassifier model, char feature")
 
-model_RNNClassifier_char, results_RNNClassifier_char = train_evaluate_rnn(data, NFOLDS, "char", logger, device=DEVICE)
+model_RNNClassifier_char, results_RNNClassifier_char = train_evaluate_rnn(data, NFOLDS, "char", logger, device=DEVICE, hidden_dim=128)
 avg_RNNClassifier_char = get_average_metrics(results_RNNClassifier_char)
 results_RNNClassifier_char.append({"fold": "average", **avg_RNNClassifier_char})
 
 logger.info([f"{key}: {value:.3f}" for key, value in avg_RNNClassifier_char.items()])
-write_ndjson_file(results_RNNClassifier_char, RESULTS_DIR / "results_gb_RNNClassifier_char.json")
+write_ndjson_file(results_RNNClassifier_char, RESULTS_DIR / "results_gb_RNNClassifierbig_char.json")
 
 
 
@@ -85,8 +85,8 @@ results_aggr = [
     {"model": "RNNClassifier_char", **avg_RNNClassifier_char}
 ]
 
-write_ndjson_file(results_aggr, RESULTS_DIR / "results_gb_RNNClassifier.json")
+write_ndjson_file(results_aggr, RESULTS_DIR / "results_gb_RNNClassifierbig.json")
 
 results_df = pd.DataFrame(data=results_aggr)
-results_df.to_csv(RESULTS_DIR / "results_gb_RNNClassifier.csv", index=False)
-results_df.to_latex(RESULTS_DIR / "results_gb_RNNClassifier.tex", index=False)
+results_df.to_csv(RESULTS_DIR / "results_gb_RNNClassifierbig.csv", index=False)
+results_df.to_latex(RESULTS_DIR / "results_gb_RNNClassifierbig.tex", index=False)

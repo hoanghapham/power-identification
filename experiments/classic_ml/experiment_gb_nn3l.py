@@ -20,7 +20,7 @@ from lib.utils import check_cuda_memory, write_ndjson_file
 from lib.logger import CustomLogger
 
 # Set up logger
-logger = CustomLogger("experiment_gb_nn", log_to_local=True, log_path=PROJECT_DIR / "logs")
+logger = CustomLogger("experiment_gb_nn3l", log_to_local=True, log_path=PROJECT_DIR / "logs")
 
 
 # Setup folders
@@ -57,24 +57,24 @@ logger.info(f"Data size: {len(data)}, % positive class: {sum(data.labels) / len(
 ## Word features
 # logger.info("Fit NeuralNetwork model, word feature")
 
-# model_NeuralNetwork_word, results_NeuralNetwork_word = train_evaluate_nn(data, NFOLDS, "word", logger, device=DEVICE)
-# avg_NeuralNetwork_word = get_average_metrics(results_NeuralNetwork_word)
-# results_NeuralNetwork_word.append({"fold": "average", **avg_NeuralNetwork_word})
+# model_NeuralNetwork3l_word, results_NeuralNetwork3l_word = train_evaluate_nn(data, NFOLDS, "word", logger, device=DEVICE, n_hidden_layers=3)
+# avg_NeuralNetwork3l_word = get_average_metrics(results_NeuralNetwork3l_word)
+# results_NeuralNetwork3l_word.append({"fold": "average", **avg_NeuralNetwork3l_word})
 
-# logger.info([f"{key}: {value:.3f}" for key, value in avg_NeuralNetwork_word.items()])
-# write_ndjson_file(results_NeuralNetwork_word, RESULTS_DIR / "results_gb_NeuralNetwork_word.json")
+# logger.info([f"{key}: {value:.3f}" for key, value in avg_NeuralNetwork3l_word.items()])
+# write_ndjson_file(results_NeuralNetwork3l_word, RESULTS_DIR / "results_gb_NeuralNetwork3l_word.json")
 
 
 # %%
 ## Char features
 logger.info("Fit NeuralNetwork model, char feature")
 
-model_NeuralNetwork_char, results_NeuralNetwork_char = train_evaluate_nn(data, NFOLDS, "char", logger, device=DEVICE)
-avg_NeuralNetwork_char = get_average_metrics(results_NeuralNetwork_char)
-results_NeuralNetwork_char.append({"fold": "average", **avg_NeuralNetwork_char})
+model_NeuralNetwork3l_char, results_NeuralNetwork3l_char = train_evaluate_nn(data, NFOLDS, "char", logger, device=DEVICE, n_hidden_layers=3)
+avg_NeuralNetwork3l_char = get_average_metrics(results_NeuralNetwork3l_char)
+results_NeuralNetwork3l_char.append({"fold": "average", **avg_NeuralNetwork3l_char})
 
-logger.info([f"{key}: {value:.3f}" for key, value in avg_NeuralNetwork_char.items()])
-write_ndjson_file(results_NeuralNetwork_char, RESULTS_DIR / "results_gb_NeuralNetwork_char.json")
+logger.info([f"{key}: {value:.3f}" for key, value in avg_NeuralNetwork3l_char.items()])
+write_ndjson_file(results_NeuralNetwork3l_char, RESULTS_DIR / "results_gb_NeuralNetwork3l_char.json")
 
 # %%
 
@@ -82,12 +82,12 @@ write_ndjson_file(results_NeuralNetwork_char, RESULTS_DIR / "results_gb_NeuralNe
 # Write results
 logger.info("Write result")
 results_aggr = [
-    # {"model": "NeuralNetwork_word", **avg_NeuralNetwork_word},
-    {"model": "NeuralNetwork_char", **avg_NeuralNetwork_char}
+    # {"model": "NeuralNetwork3l_word", **avg_NeuralNetwork3l_word},
+    {"model": "NeuralNetwork3l_char", **avg_NeuralNetwork3l_char}
 ]
 
-write_ndjson_file(results_aggr, RESULTS_DIR / "results_gb_NeuralNetwork.json")
+write_ndjson_file(results_aggr, RESULTS_DIR / "results_gb_NeuralNetwork3l.json")
 
 results_df = pd.DataFrame(data=results_aggr)
-results_df.to_csv(RESULTS_DIR / "results_gb_NeuralNetwork.csv", index=False)
-results_df.to_latex(RESULTS_DIR / "results_gb_NeuralNetwork.tex", index=False)
+results_df.to_csv(RESULTS_DIR / "results_gb_NeuralNetwork3l.csv", index=False)
+results_df.to_latex(RESULTS_DIR / "results_gb_NeuralNetwork3l.tex", index=False)
