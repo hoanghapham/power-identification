@@ -1,8 +1,0 @@
-altair
-matplotlib
-numpy
-pandas
-scikit-learn
-tqdm
-python-dotenv
-typing-extensions
