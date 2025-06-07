@@ -1,14 +1,10 @@
 #%%
 import sys
 from pathlib import Path
-from dotenv import dotenv_values
 
-# Make packages in projects directory available for importing
-env = dotenv_values(".env")
-# PROJECT_DIR = Path(env["PROJECT_DIR"])
-PROJECT_DIR = Path.cwd().parent.parent.resolve()
-
+PROJECT_DIR = Path(__file__).parent.parent.parent
 sys.path.append(str(PROJECT_DIR))
+
 
 # Import
 import torch
